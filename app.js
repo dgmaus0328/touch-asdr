@@ -3,6 +3,7 @@
 
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
+  const hintEl = document.getElementById('hint');
 
   function resize() {
     const dpr = window.devicePixelRatio || 1;
@@ -13,12 +14,36 @@
   window.addEventListener('resize', resize);
   resize();
 
-  /** Average contact radius from Touch (fallback when 0). */
+  /** Radius from Touch (fallback when 0). */
   function touchRadius(touch) {
     const rx = touch.radiusX || 0;
     const ry = touch.radiusY || 0;
     const r = (rx + ry) / 2;
     return r > 0 ? r : 22;
+  }
+
+  /**
+   * Pointer geometry when the browser exposes width/height; else mouse uses
+   * a synthetic radius so desktop can exercise attack/sustain.
+   */
+  function syntheticRadius(now, t0) {
+    const dt = Math.max(0, now - t0);
+    if (dt <= ATTACK_MS) {
+      return 22 + (dt / ATTACK_MS) * 10;
+    }
+    return 32 + 2.2 * Math.sin(now * 0.055);
+  }
+
+  function radiusFromPointerEvent(e, now, t0) {
+    const w = e.width || 0;
+    const h = e.height || 0;
+    if (w > 0 || h > 0) {
+      return (w + h) / 4;
+    }
+    if (e.pointerType === 'mouse') {
+      return syntheticRadius(now, t0);
+    }
+    return 22;
   }
 
   const ATTACK_MS = 150;
@@ -118,17 +143,31 @@
     return Math.sqrt(sq / radii.length);
   }
 
-  function onTouchStart(e) {
+  function hideHintOnce() {
+    if (hintEl && !hintEl.classList.contains('is-hidden')) {
+      hintEl.classList.add('is-hidden');
+    }
+  }
+
+  function onPointerDown(e) {
+    if (e.pointerType === 'touch') return;
+    if (e.button !== 0) return;
     e.preventDefault();
-    const touch = e.touches[0];
-    const x0 = touch.clientX;
-    const y0 = touch.clientY;
+    hideHintOnce();
+
     const t0 = performance.now();
-    const r0 = touchRadius(touch);
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const r0 = radiusFromPointerEvent(e, t0, t0);
+
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch (_) {}
 
     stopHaptics();
 
     active = {
+      pointerId: e.pointerId,
       x0: x0,
       y0: y0,
       t0: t0,
@@ -146,10 +185,138 @@
     scheduleFrame();
   }
 
+  function onPointerMove(e) {
+    if (e.pointerType === 'touch') return;
+    e.preventDefault();
+    if (!active || active._touch || e.pointerId !== active.pointerId) return;
+    const now = performance.now();
+    const r = radiusFromPointerEvent(e, now, active.t0);
+
+    active.samples.push({ t: now, r: r });
+    if (r > active.peakR) active.peakR = r;
+    active.currentRadius = r;
+
+    const attackEnd = active.t0 + ATTACK_MS;
+    active.attackVelocity = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);
+
+    const lw = Math.min(24, Math.max(1, 1 + active.attackVelocity * 0.08));
+    active.lineWidth = lw;
+
+    if (!active.attackDone && now >= attackEnd) {
+      active.attackDone = true;
+      active.lockedLineWidth = lw;
+      active.sustainJitter = sustainJitterFromSamples(active.samples, attackEnd);
+      startSustainHaptics(active.sustainJitter);
+      lastHapticTune = now;
+    } else if (active.attackDone) {
+      active.sustainJitter = sustainJitterFromSamples(active.samples, attackEnd);
+      const prevJ = active._lastHapticJitter;
+      if (
+        prevJ === undefined ||
+        Math.abs(active.sustainJitter - prevJ) > 0.35 ||
+        now - lastHapticTune > 400
+      ) {
+        active._lastHapticJitter = active.sustainJitter;
+        lastHapticTune = now;
+        startSustainHaptics(active.sustainJitter);
+      }
+    }
+
+    scheduleFrame();
+  }
+
+  function endPointer(e) {
+    if (e.pointerType === 'touch') return;
+    e.preventDefault();
+    if (!active || active._touch || e.pointerId !== active.pointerId) return;
+
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+
+    const attackEnd = active.t0 + ATTACK_MS;
+    const finalAttack = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);
+    const lwFromAttack = Math.min(24, Math.max(1, 1 + finalAttack * 0.08));
+    const strokeW = active.lockedLineWidth != null ? active.lockedLineWidth : lwFromAttack;
+
+    const out = {
+      peakRadius: active.peakR,
+      attackVelocity: finalAttack,
+      coordinates: { x: active.x0, y: active.y0 }
+    };
+    console.log(JSON.stringify(out));
+
+    ghosts.push({
+      x: active.x0,
+      y: active.y0,
+      halfLen: active.peakR,
+      lineWidth: strokeW
+    });
+
+    stopHaptics();
+    active = null;
+    scheduleFrame();
+  }
+
+  function onPointerUp(e) {
+    endPointer(e);
+  }
+
+  function onPointerCancel(e) {
+    endPointer(e);
+  }
+
+  function onLostPointerCapture(e) {
+    if (active && active._touch) return;
+    if (active && e.pointerId === active.pointerId) {
+      stopHaptics();
+      active = null;
+      scheduleFrame();
+    }
+  }
+
+  /** Touch-only: real radiusX/Y when PointerEvent width/height are 0. */
+  function onTouchStart(e) {
+    if (e.touches.length !== 1) return;
+    e.preventDefault();
+    hideHintOnce();
+
+    const touch = e.touches[0];
+    const t0 = performance.now();
+    const x0 = touch.clientX;
+    const y0 = touch.clientY;
+    const r0 = touchRadius(touch);
+
+    stopHaptics();
+
+    active = {
+      pointerId: touch.identifier,
+      x0: x0,
+      y0: y0,
+      t0: t0,
+      r0: r0,
+      samples: [{ t: t0, r: r0 }],
+      peakR: r0,
+      currentRadius: r0,
+      attackVelocity: 0,
+      sustainJitter: 0,
+      lineWidth: 2,
+      lockedLineWidth: null,
+      attackDone: false,
+      _touch: true
+    };
+    lastHapticTune = 0;
+    scheduleFrame();
+  }
+
   function onTouchMove(e) {
     e.preventDefault();
-    if (!active) return;
-    const touch = e.touches[0];
+    if (!active || !active._touch) return;
+    const touch = Array.prototype.find.call(e.touches, function (t) {
+      return t.identifier === active.pointerId;
+    });
+    if (!touch) return;
+
     const now = performance.now();
     const r = touchRadius(touch);
 
@@ -188,7 +355,9 @@
 
   function onTouchEnd(e) {
     e.preventDefault();
-    if (!active) return;
+    if (!active || !active._touch) return;
+    const still = e.touches.length > 0;
+    if (still) return;
 
     const attackEnd = active.t0 + ATTACK_MS;
     const finalAttack = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);
@@ -216,12 +385,19 @@
 
   function onTouchCancel(e) {
     e.preventDefault();
+    if (!active || !active._touch) return;
     stopHaptics();
     active = null;
     scheduleFrame();
   }
 
   const opts = { passive: false };
+  canvas.addEventListener('pointerdown', onPointerDown, opts);
+  canvas.addEventListener('pointermove', onPointerMove, opts);
+  canvas.addEventListener('pointerup', onPointerUp, opts);
+  canvas.addEventListener('pointercancel', onPointerCancel, opts);
+  canvas.addEventListener('lostpointercapture', onLostPointerCapture);
+
   canvas.addEventListener('touchstart', onTouchStart, opts);
   canvas.addEventListener('touchmove', onTouchMove, opts);
   canvas.addEventListener('touchend', onTouchEnd, opts);

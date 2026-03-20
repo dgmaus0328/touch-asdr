@@ -19,4 +19,52 @@ canvas {
   width: 100%;
   height: 100%;
   touch-action: none;
+  cursor: crosshair;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.title {
+  margin: 1rem 1.25rem;
+  font: 600 0.9rem/1.3 system-ui, sans-serif;
+  color: #5c5c62;
+  letter-spacing: 0.02em;
+}
+
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  max-width: min(22rem, calc(100% - 2rem));
+  margin: 0;
+  padding: 0.65rem 0.9rem;
+  font: 0.8rem/1.45 system-ui, sans-serif;
+  color: #8b8b93;
+  text-align: center;
+  background: rgba(18, 18, 22, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.hint strong {
+  color: #b4b4bc;
+  font-weight: 600;
+}
+
+.hint-sub {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  color: #6e6e76;
+}
+
+.hint.is-hidden {
+  opacity: 0;
+  transition: opacity 0.35s ease;
 }
