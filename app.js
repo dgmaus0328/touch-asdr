@@ -132,6 +132,14 @@
     if (rafId == null) rafId = requestAnimationFrame(frame);
   }
 
+  const phoneFrame = canvas.closest('.phone-frame');
+  if (phoneFrame && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(function () {
+      resize();
+      scheduleFrame();
+    }).observe(phoneFrame);
+  }
+
   function attackVelocityFromSamples(samples, t0, r0, attackEnd) {
     let best = 0;
     for (let i = 0; i < samples.length; i++) {
