@@ -3,7 +3,8 @@
 }
 
 :root {
-  --chrome-bg: #1a1a1e;
+  --chrome-bg: #121218;
+  --bezel-mid: #2a2a32;
   --canvas-bg: #3a3a42;
 }
 
@@ -24,25 +25,44 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
-    env(safe-area-inset-left);
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+}
+
+/**
+ * Outer “device” bezel — always visible (not just a 1px hairline on dark bg).
+ */
+.device-shell {
+  flex-shrink: 0;
+  padding: 12px;
+  border-radius: 36px;
+  background: linear-gradient(165deg, #4a4a54 0%, #25252c 42%, #141418 100%);
+  border: 3px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -3px 12px rgba(0, 0, 0, 0.45),
+    0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
 .phone-frame {
+  position: relative;
+  /* Portrait phone: width : height = 9 : 16 */
   aspect-ratio: 9 / 16;
-  width: min(100vw, calc(100vh * 9 / 16));
-  max-height: 100%;
-  flex-shrink: 0;
+  /* Never full viewport width on desktop — keeps side margins so the frame reads */
+  width: min(92vw, calc((100vh - 96px) * 9 / 16), 420px);
+  max-height: calc(100vh - 96px);
+  margin: 0 auto;
   background: var(--canvas-bg);
-  border-radius: 12px;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 12px 40px rgba(0, 0, 0, 0.45);
+  border-radius: 26px;
   overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 canvas {
   display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 100%;
   height: 100%;
   touch-action: none;
