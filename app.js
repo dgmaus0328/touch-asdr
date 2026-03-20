@@ -14,12 +14,28 @@
   window.addEventListener('resize', resize);
   resize();
 
-  /** Radius from Touch (fallback when 0). */
+  const ATTACK_MS = 150;
+  const MIN_TRUSTED_RADIUS = 3;
+
+  /**
+   * Browsers often report tiny radiusX/Y (e.g. 0.5) for stylus/trackpad or
+   * buggy values — treat those as unknown and use a sane default.
+   */
+  function clampContactRadius(r) {
+    if (!isFinite(r) || r < MIN_TRUSTED_RADIUS) {
+      return 22;
+    }
+    return r;
+  }
+
   function touchRadius(touch) {
     const rx = touch.radiusX || 0;
     const ry = touch.radiusY || 0;
     const r = (rx + ry) / 2;
-    return r > 0 ? r : 22;
+    if (r <= 0) {
+      return 22;
+    }
+    return clampContactRadius(r);
   }
 
   /**
@@ -34,7 +50,11 @@
     return 32 + 2.2 * Math.sin(now * 0.055);
   }
 
-  /** Mouse reports tiny width/height (~1px); never use that as contact radius. */
+  /**
+   * Mouse reports ~1px width/height; some Safari builds omit pointerType or use
+   * tiny geometry — only trust explicit mouse as synthetic; otherwise require
+   * meaningful size before using width/height.
+   */
   function radiusFromPointerEvent(e, now, t0) {
     if (e.pointerType === 'mouse') {
       return syntheticRadius(now, t0);
@@ -42,13 +62,12 @@
     const w = e.width || 0;
     const h = e.height || 0;
     const geom = (w + h) / 4;
-    if (geom >= 2) {
+    if (geom >= MIN_TRUSTED_RADIUS) {
       return geom;
     }
     return syntheticRadius(now, t0);
   }
 
-  const ATTACK_MS = 150;
   const ghosts = [];
 
   let active = null;
