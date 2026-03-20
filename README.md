@@ -11,11 +11,12 @@ The canvas draws a crosshair centered on the initial touch point; arm length fol
 
 ## Project layout
 
-| File        | Purpose                          |
-| ----------- | -------------------------------- |
-| `index.html` | Page shell and asset links      |
-| `styles.css` | Full-screen layout, no scroll/zoom |
-| `app.js`     | Touch handling, envelope math, drawing, haptics |
+| File          | Purpose |
+| ------------- | ------- |
+| `index.html`  | Page shell and asset links |
+| `styles.css`  | Layout (input stage, no scroll/zoom) |
+| `envelope.js` | **Reusable** touch envelope math (radius, attack, sustain, JSON fields) — no DOM |
+| `app.js`      | Canvas UI, pointer/touch wiring, drawing, haptics (`import` from `envelope.js`) |
 
 ## Run locally
 
@@ -28,17 +29,11 @@ python3 -m http.server 8080
 
 Then open `http://localhost:8080` on your machine, or `http://<your-lan-ip>:8080` on your phone (same Wi‑Fi).
 
-Opening `index.html` directly via `file://` may block or restrict external `app.js` / `styles.css` in some browsers—use a local server when possible.
+The app uses **`type="module"`** (`app.js` imports `envelope.js`). Opening via `file://` often fails for ES modules—use a local server. The **Pages bundle** inlines both into one `index.html` so a single file works anywhere.
 
 ## Publish to a static site folder
 
-If you keep a separate clone or folder for **GitLab Pages**, **GitHub Pages**, or another static root, copy the three runtime files into that directory, then commit/push that repo:
-
-```bash
-./scripts/publish-static.sh /absolute/path/to/your/static/site/root
-```
-
-That copies `index.html`, `styles.css`, and `app.js` only (no `README.md` / `dev_diary.md`).
+For static hosts that need a **single file**, run **`publish-static.sh`** (runs `bundle-for-pages.py`), which writes one **`index.html`** with inlined CSS + inlined **`envelope.js` + `app.js`** as one module script. Commit that file to your Pages repo.
 
 **Disney GitLab Pages (dg-sandbox):** deploy a **single bundled `index.html`** (inlined CSS + JS) via `./scripts/publish-static.sh`. Some Pages setups serve `app.js` with a non-JavaScript `Content-Type`; with `X-Content-Type-Options: nosniff`, the browser will not run external scripts—bundling avoids that.
 
