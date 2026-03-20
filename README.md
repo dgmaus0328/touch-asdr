@@ -30,6 +30,25 @@ Then open `http://localhost:8080` on your machine, or `http://<your-lan-ip>:8080
 
 Opening `index.html` directly via `file://` may block or restrict external `app.js` / `styles.css` in some browsers—use a local server when possible.
 
+## Publish to a static site folder
+
+If you keep a separate clone or folder for **GitLab Pages**, **GitHub Pages**, or another static root, copy the three runtime files into that directory, then commit/push that repo:
+
+```bash
+./scripts/publish-static.sh /absolute/path/to/your/static/site/root
+```
+
+That copies `index.html`, `styles.css`, and `app.js` only (no `README.md` / `dev_diary.md`).
+
+**Disney GitLab Pages (dg-sandbox):** app files live under the Pages repo’s `public/touch-asdr/` directory (same pattern as `public/rivals/`). After copying, commit and push **`dg-sandbox`**, not only `touch-asdr`.
+
+- Site: [touch-asdr on dg-sandbox Pages](https://dg-sandbox-69d828.pages.gitlab.disney.com/touch-asdr/)
+- Example publish path on this machine: `~/GitLab/dg-sandbox/public/touch-asdr/`
+
+```bash
+./scripts/publish-static.sh "$HOME/GitLab/dg-sandbox/public/touch-asdr"
+```
+
 ## Touch & output
 
 - Default touch behaviors (scroll, pinch-zoom) are reduced via CSS (`touch-action: none`, etc.) and `preventDefault` on touch handlers where needed.
