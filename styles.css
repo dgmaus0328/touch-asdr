@@ -46,16 +46,25 @@ body {
 
 .phone-frame {
   position: relative;
-  /* Portrait phone: width : height = 9 : 16 */
-  aspect-ratio: 9 / 16;
-  /* Never full viewport width on desktop — keeps side margins so the frame reads */
-  width: min(92vw, calc((100vh - 96px) * 9 / 16), 420px);
-  max-height: calc(100vh - 96px);
+  /*
+   * Portrait 9:16. WebKit often fails to give height from aspect-ratio when the
+   * only child is position:absolute (canvas), so width×height becomes landscape.
+   * In-flow ::before + padding-bottom establishes height reliably.
+   */
+  width: min(92vw, 420px, calc((100vh - 120px) * 9 / 16));
   margin: 0 auto;
   background: var(--canvas-bg);
   border-radius: 26px;
   overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.phone-frame::before {
+  content: '';
+  display: block;
+  width: 100%;
+  /* height/width = 16/9 for 9:16 portrait (width shorter than height) */
+  padding-bottom: calc(100% * 16 / 9);
 }
 
 canvas {
