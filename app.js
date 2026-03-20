@@ -2,10 +2,16 @@ import {
   ATTACK_MS,
   touchRadius,
   radiusFromPointerEvent,
+  syntheticRadius,
   attackVelocityFromSamples,
   sustainJitterFromSamples,
-  finalizeEnvelopeOutput,
-  lineWidthFromAttackVelocity
+  buildGestureReport,
+  lineWidthFromAttackVelocity,
+  gestureStartMilestone,
+  liveGestureState,
+  diffLiveMilestones,
+  crosshairHalfLength,
+  lineWidthFromAttackAndDwell
 } from './envelope.js';
 
 (function () {
@@ -14,6 +20,20 @@ import {
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
   const hintEl = document.getElementById('hint');
+  const root = document.documentElement;
+
+  const CSS_TOUCH_VARS = [
+    '--touch-press-ms',
+    '--touch-phase',
+    '--touch-current-radius',
+    '--touch-peak-radius',
+    '--touch-ms-to-peak',
+    '--touch-dwell-norm-half',
+    '--touch-dwell-norm-line',
+    '--touch-x',
+    '--touch-y',
+    '--touch-attack-velocity'
+  ];
 
   /** Canvas-local CSS pixels (matches drawing after DPR transform). */
   function canvasPointFromClient(clientX, clientY) {
@@ -22,6 +42,25 @@ import {
       x: clientX - rect.left,
       y: clientY - rect.top
     };
+  }
+
+  function applyTouchCssVars(live) {
+    root.style.setProperty('--touch-press-ms', String(Math.round(live.pressMs)));
+    root.style.setProperty('--touch-phase', live.phase);
+    root.style.setProperty('--touch-current-radius', String(live.currentRadius.toFixed(2)));
+    root.style.setProperty('--touch-peak-radius', String(live.peakRadius.toFixed(2)));
+    root.style.setProperty('--touch-ms-to-peak', String(Math.round(live.msToPeakSoFar)));
+    root.style.setProperty('--touch-dwell-norm-half', String(live.dwellNormHalfLen.toFixed(4)));
+    root.style.setProperty('--touch-dwell-norm-line', String(live.dwellNormLineWidth.toFixed(4)));
+    root.style.setProperty('--touch-x', String(live.coordinates.x.toFixed(2)));
+    root.style.setProperty('--touch-y', String(live.coordinates.y.toFixed(2)));
+    root.style.setProperty('--touch-attack-velocity', String(live.attackVelocity.toFixed(4)));
+  }
+
+  function clearTouchCssVars() {
+    for (let i = 0; i < CSS_TOUCH_VARS.length; i++) {
+      root.style.removeProperty(CSS_TOUCH_VARS[i]);
+    }
   }
 
   function resize() {
@@ -90,9 +129,35 @@ import {
     }
 
     if (active) {
-      const halfLen = active.currentRadius;
-      const lw = active.lockedLineWidth != null ? active.lockedLineWidth : active.lineWidth;
+      const now = performance.now();
+
+      if (!active._touch && active._pointerType === 'mouse') {
+        active.currentRadius = syntheticRadius(now, active.t0);
+        if (active.currentRadius > active.peakR) {
+          active.peakR = active.currentRadius;
+          active.tPeak = now;
+        }
+      }
+
+      const newMilestones = diffLiveMilestones(active, now);
+      for (let m = 0; m < newMilestones.length; m++) {
+        active.keyframes.push(newMilestones[m]);
+      }
+
+      const live = liveGestureState(active, now);
+      applyTouchCssVars(live);
+
+      const pressMs = now - active.t0;
+      const halfLen = crosshairHalfLength(active.currentRadius, pressMs);
+      const lw = lineWidthFromAttackAndDwell(
+        live.attackVelocity,
+        pressMs,
+        active.lockedLineWidth
+      );
+
       drawCrosshair(active.x0, active.y0, halfLen, lw, 1);
+
+      scheduleFrame();
     }
   }
 
@@ -113,6 +178,32 @@ import {
     }
   }
 
+  function createActiveBase(t0, x0, y0, r0, pointerId, touchFlag, pointerType) {
+    const base = {
+      pointerId: pointerId,
+      x0: x0,
+      y0: y0,
+      t0: t0,
+      r0: r0,
+      samples: [{ t: t0, r: r0 }],
+      peakR: r0,
+      currentRadius: r0,
+      tPeak: t0,
+      attackVelocity: 0,
+      sustainJitter: 0,
+      lineWidth: 2,
+      lockedLineWidth: null,
+      attackDone: false,
+      keyframes: [],
+      _milestoneAttackEndEmitted: false,
+      _milestoneLastPeakR: r0
+    };
+    if (touchFlag) base._touch = true;
+    if (pointerType != null) base._pointerType = pointerType;
+    base.keyframes.push(gestureStartMilestone(base));
+    return base;
+  }
+
   function onPointerDown(e) {
     if (e.pointerType === 'touch') return;
     if (e.button !== 0) return;
@@ -131,21 +222,7 @@ import {
 
     stopHaptics();
 
-    active = {
-      pointerId: e.pointerId,
-      x0: x0,
-      y0: y0,
-      t0: t0,
-      r0: r0,
-      samples: [{ t: t0, r: r0 }],
-      peakR: r0,
-      currentRadius: r0,
-      attackVelocity: 0,
-      sustainJitter: 0,
-      lineWidth: 2,
-      lockedLineWidth: null,
-      attackDone: false
-    };
+    active = createActiveBase(t0, x0, y0, r0, e.pointerId, false, e.pointerType);
     lastHapticTune = 0;
     scheduleFrame();
   }
@@ -158,7 +235,10 @@ import {
     const r = radiusFromPointerEvent(e, now, active.t0);
 
     active.samples.push({ t: now, r: r });
-    if (r > active.peakR) active.peakR = r;
+    if (r > active.peakR) {
+      active.peakR = r;
+      active.tPeak = now;
+    }
     active.currentRadius = r;
 
     const attackEnd = active.t0 + ATTACK_MS;
@@ -199,20 +279,27 @@ import {
       canvas.releasePointerCapture(e.pointerId);
     } catch (_) {}
 
-    const out = finalizeEnvelopeOutput(active);
-    const lwFromAttack = lineWidthFromAttackVelocity(out.attackVelocity);
-    const strokeW = active.lockedLineWidth != null ? active.lockedLineWidth : lwFromAttack;
+    const tEnd = performance.now();
+    const out = buildGestureReport(active, tEnd, active.keyframes);
+    const pressMs = tEnd - active.t0;
+    const ghostHalf = crosshairHalfLength(active.currentRadius, pressMs);
+    const ghostW = lineWidthFromAttackAndDwell(
+      out.attackVelocity,
+      pressMs,
+      active.lockedLineWidth
+    );
 
     console.log(JSON.stringify(out));
 
     ghosts.push({
       x: active.x0,
       y: active.y0,
-      halfLen: active.peakR,
-      lineWidth: strokeW
+      halfLen: ghostHalf,
+      lineWidth: ghostW
     });
 
     stopHaptics();
+    clearTouchCssVars();
     active = null;
     scheduleFrame();
   }
@@ -229,6 +316,7 @@ import {
     if (active && active._touch) return;
     if (active && e.pointerId === active.pointerId) {
       stopHaptics();
+      clearTouchCssVars();
       active = null;
       scheduleFrame();
     }
@@ -248,22 +336,7 @@ import {
 
     stopHaptics();
 
-    active = {
-      pointerId: touch.identifier,
-      x0: x0,
-      y0: y0,
-      t0: t0,
-      r0: r0,
-      samples: [{ t: t0, r: r0 }],
-      peakR: r0,
-      currentRadius: r0,
-      attackVelocity: 0,
-      sustainJitter: 0,
-      lineWidth: 2,
-      lockedLineWidth: null,
-      attackDone: false,
-      _touch: true
-    };
+    active = createActiveBase(t0, x0, y0, r0, touch.identifier, true, null);
     lastHapticTune = 0;
     scheduleFrame();
   }
@@ -280,7 +353,10 @@ import {
     const r = touchRadius(touch);
 
     active.samples.push({ t: now, r: r });
-    if (r > active.peakR) active.peakR = r;
+    if (r > active.peakR) {
+      active.peakR = r;
+      active.tPeak = now;
+    }
     active.currentRadius = r;
 
     const attackEnd = active.t0 + ATTACK_MS;
@@ -318,20 +394,27 @@ import {
     const still = e.touches.length > 0;
     if (still) return;
 
-    const out = finalizeEnvelopeOutput(active);
-    const lwFromAttack = lineWidthFromAttackVelocity(out.attackVelocity);
-    const strokeW = active.lockedLineWidth != null ? active.lockedLineWidth : lwFromAttack;
+    const tEnd = performance.now();
+    const out = buildGestureReport(active, tEnd, active.keyframes);
+    const pressMs = tEnd - active.t0;
+    const ghostHalf = crosshairHalfLength(active.currentRadius, pressMs);
+    const ghostW = lineWidthFromAttackAndDwell(
+      out.attackVelocity,
+      pressMs,
+      active.lockedLineWidth
+    );
 
     console.log(JSON.stringify(out));
 
     ghosts.push({
       x: active.x0,
       y: active.y0,
-      halfLen: active.peakR,
-      lineWidth: strokeW
+      halfLen: ghostHalf,
+      lineWidth: ghostW
     });
 
     stopHaptics();
+    clearTouchCssVars();
     active = null;
     scheduleFrame();
   }
@@ -340,6 +423,7 @@ import {
     e.preventDefault();
     if (!active || !active._touch) return;
     stopHaptics();
+    clearTouchCssVars();
     active = null;
     scheduleFrame();
   }

@@ -1,13 +1,16 @@
 # touch-asdr
 
-A small **vanilla HTML/CSS/JS** web app for **iPhone** (and other touch devices) that visualizes a touch “envelope” and draws a **crosshair** driven by contact radius.
+A small **vanilla HTML/CSS/JS** web app for **iPhone** (and other touch devices) that visualizes a touch “envelope” and draws a **crosshair** driven by contact radius and **dwell** (how long the finger stays down).
 
 It tracks `touchstart` / `touchmove` / `touchend`, uses `radiusX` / `radiusY` from the active touch, and derives:
 
 - **Attack** — how quickly the contact radius grows in the first **150 ms**
 - **Sustain** — micro-oscillation (“jitter”) in radius while the finger stays down
+- **Dwell** — after the attack window, **elapsed time** adds extra crosshair arm length and stroke width (capped; tunable in `envelope.js`)
 
-The canvas draws a crosshair centered on the initial touch point; arm length follows the **current** radius, and stroke width follows **attack**. Completed touches leave a **ghost** crosshair at **20% opacity**. On release, metrics are **logged to the console** as JSON.
+There is **no separate Decay stage** in the model; release timing is summarized in the JSON.
+
+The canvas draws a crosshair centered on the initial touch point; arm length follows **radius + dwell bonus**, and stroke follows **attack + dwell**. Completed touches leave a **ghost** crosshair at **20% opacity**. On release, metrics and a **keyframe timeline** are **logged to the console** as JSON.
 
 ## Project layout
 
@@ -15,8 +18,8 @@ The canvas draws a crosshair centered on the initial touch point; arm length fol
 | ------------- | ------- |
 | `index.html`  | Page shell and asset links |
 | `styles.css`  | Layout (input stage, no scroll/zoom) |
-| `envelope.js` | **Reusable** touch envelope math (radius, attack, sustain, JSON fields) — no DOM |
-| `app.js`      | Canvas UI, pointer/touch wiring, drawing, haptics (`import` from `envelope.js`) |
+| `envelope.js` | **Reusable** touch envelope math (radius, attack, sustain, dwell, milestones, report) — no DOM |
+| `app.js`      | Canvas UI, pointer/touch wiring, drawing, haptics, CSS custom properties (`import` from `envelope.js`) |
 
 ## Run locally
 
@@ -49,7 +52,37 @@ App output lives under the Pages repo’s `public/touch-asdr/` (same idea as `pu
 ## Touch & output
 
 - Default touch behaviors (scroll, pinch-zoom) are reduced via CSS (`touch-action: none`, etc.) and `preventDefault` on touch handlers where needed.
-- On **touchend**, the console receives a JSON object with **`peakRadius`**, **`attackVelocity`**, and **`coordinates`** `{ x, y }`.
+- On **touchend** (or pointer up), the console receives JSON including:
+  - **`peakRadius`**, **`attackVelocity`**, **`coordinates`** `{ x, y }`
+  - **`pressDurationMs`**, **`msToPeakRadius`**, **`msFromPeakToRelease`**
+  - **`sustainJitter`**, **`dwellNormAtEnd`**
+  - **`keyframes`**: ordered milestones with **`kind`** `start` | `attackEnd` | `peakRadius` | `release`, plus times and geometry where applicable
+
+**Hardware note:** After lift, contact radius is usually **not** sampled, so “time to return to zero” radius is **not** measured; **`msFromPeakToRelease`** is the time from first reaching the final peak radius until release.
+
+### Tunables (`envelope.js`)
+
+| Constant | Role |
+| -------- | ---- |
+| `ATTACK_MS` | Attack window (default 150 ms) |
+| `DWELL_HALF_LEN_SATURATION_MS` / `DWELL_HALF_LEN_MAX_BONUS` | Dwell → extra crosshair half-length |
+| `DWELL_LINE_WIDTH_SATURATION_MS` / `DWELL_LINE_WIDTH_MAX_BONUS` | Dwell → extra stroke width |
+
+### CSS bridge (set on `:root` while a gesture is active)
+
+The demo updates these **custom properties** every frame so external CSS can map them to color, opacity, filters, etc. They are **removed** when the gesture ends.
+
+| Variable | Meaning |
+| -------- | ------- |
+| `--touch-press-ms` | Elapsed ms since touch start |
+| `--touch-phase` | `attack` or `sustain` |
+| `--touch-current-radius` | Current contact radius (px) |
+| `--touch-peak-radius` | Running max radius |
+| `--touch-ms-to-peak` | ms from start to first reach current peak |
+| `--touch-dwell-norm-half` | 0..1 for half-length dwell curve |
+| `--touch-dwell-norm-line` | 0..1 for line-width dwell curve |
+| `--touch-x`, `--touch-y` | Initial centroid (canvas px) |
+| `--touch-attack-velocity` | Attack velocity estimate |
 
 ## Haptics
 
