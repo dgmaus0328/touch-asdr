@@ -40,7 +40,9 @@ If you keep a separate clone or folder for **GitLab Pages**, **GitHub Pages**, o
 
 That copies `index.html`, `styles.css`, and `app.js` only (no `README.md` / `dev_diary.md`).
 
-**Disney GitLab Pages (dg-sandbox):** app files live under the Pages repo’s `public/touch-asdr/` directory (same pattern as `public/rivals/`). After copying, commit and push **`dg-sandbox`**, not only `touch-asdr`.
+**Disney GitLab Pages (dg-sandbox):** deploy a **single bundled `index.html`** (inlined CSS + JS) via `./scripts/publish-static.sh`. Some Pages setups serve `app.js` with a non-JavaScript `Content-Type`; with `X-Content-Type-Options: nosniff`, the browser will not run external scripts—bundling avoids that.
+
+App output lives under the Pages repo’s `public/touch-asdr/` (same idea as `public/rivals/`). After publishing, commit and push **`dg-sandbox`**, not only `touch-asdr`.
 
 - Site: [touch-asdr on dg-sandbox Pages](https://dg-sandbox-69d828.pages.gitlab.disney.com/touch-asdr/)
 - Example publish path on this machine: `~/GitLab/dg-sandbox/public/touch-asdr/`
