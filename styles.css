@@ -3,8 +3,9 @@
 }
 
 :root {
-  --chrome-bg: #121218;
-  --canvas-bg: #3a3a42;
+  --body-bg: #d8d8dc;
+  --stage-bg: #3a3a42;
+  --stage-border: #ff6600;
 }
 
 html,
@@ -17,7 +18,7 @@ body {
   overscroll-behavior: none;
   -webkit-user-select: none;
   user-select: none;
-  background: var(--chrome-bg);
+  background: var(--body-bg);
 }
 
 body {
@@ -29,36 +30,24 @@ body {
 }
 
 /**
- * Decorative bezel only. The canvas is the interactive surface and is sized
- * smaller than the viewport via CSS (not full-bleed).
+ * Fixed-size phone-ish stage; canvas fills this box. Listeners stay on #c.
  */
-.device-shell {
+.input-stage {
+  position: relative;
   flex-shrink: 0;
-  padding: 12px;
-  border-radius: 36px;
-  background: linear-gradient(165deg, #4a4a54 0%, #25252c 42%, #141418 100%);
-  border: 3px solid rgba(255, 255, 255, 0.22);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    inset 0 -3px 12px rgba(0, 0, 0, 0.45),
-    0 16px 48px rgba(0, 0, 0, 0.55);
+  width: 390px;
+  height: 844px;
+  background: var(--stage-bg);
+  border: 4px solid var(--stage-border);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 
-/*
- * Canvas is a replaced element: width + aspect-ratio give a real layout box
- * (taller than wide, 9:16) without wrapper hacks. Events use this box.
- */
 #c {
   display: block;
-  width: min(92vw, 420px, calc((100vh - 120px) * 9 / 16));
-  max-height: calc(100vh - 120px);
-  height: auto;
-  aspect-ratio: 9 / 16;
+  width: 100%;
+  height: 100%;
   touch-action: none;
   cursor: crosshair;
-  background: var(--canvas-bg);
-  border-radius: 26px;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .overlay {
@@ -71,7 +60,7 @@ body {
 .title {
   margin: 1rem 1.25rem;
   font: 600 0.9rem/1.3 system-ui, sans-serif;
-  color: #8a8a92;
+  color: #4a4a52;
   letter-spacing: 0.02em;
 }
 
@@ -84,15 +73,15 @@ body {
   margin: 0;
   padding: 0.65rem 0.9rem;
   font: 0.8rem/1.45 system-ui, sans-serif;
-  color: #a0a0a8;
+  color: #3a3a42;
   text-align: center;
-  background: rgba(32, 32, 38, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 8px;
 }
 
 .hint strong {
-  color: #c8c8d0;
+  color: #1a1a1e;
   font-weight: 600;
 }
 
@@ -100,7 +89,7 @@ body {
   display: block;
   margin-top: 0.35rem;
   font-size: 0.72rem;
-  color: #7a7a84;
+  color: #5a5a62;
 }
 
 .hint.is-hidden {

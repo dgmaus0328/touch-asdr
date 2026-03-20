@@ -5,6 +5,15 @@
   const ctx = canvas.getContext('2d');
   const hintEl = document.getElementById('hint');
 
+  /** Canvas-local CSS pixels (matches drawing after DPR transform). */
+  function canvasPointFromClient(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  }
+
   function resize() {
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
@@ -187,8 +196,9 @@
     hideHintOnce();
 
     const t0 = performance.now();
-    const x0 = e.clientX;
-    const y0 = e.clientY;
+    const p0 = canvasPointFromClient(e.clientX, e.clientY);
+    const x0 = p0.x;
+    const y0 = p0.y;
     const r0 = radiusFromPointerEvent(e, t0, t0);
 
     try {
@@ -314,8 +324,9 @@
 
     const touch = e.touches[0];
     const t0 = performance.now();
-    const x0 = touch.clientX;
-    const y0 = touch.clientY;
+    const p0 = canvasPointFromClient(touch.clientX, touch.clientY);
+    const x0 = p0.x;
+    const y0 = p0.y;
     const r0 = touchRadius(touch);
 
     stopHaptics();
