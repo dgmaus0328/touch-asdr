@@ -4,7 +4,6 @@
 
 :root {
   --chrome-bg: #121218;
-  --bezel-mid: #2a2a32;
   --canvas-bg: #3a3a42;
 }
 
@@ -30,7 +29,8 @@ body {
 }
 
 /**
- * Outer “device” bezel — always visible (not just a 1px hairline on dark bg).
+ * Decorative bezel only. The canvas is the interactive surface and is sized
+ * smaller than the viewport via CSS (not full-bleed).
  */
 .device-shell {
   flex-shrink: 0;
@@ -44,39 +44,21 @@ body {
     0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
-.phone-frame {
-  position: relative;
-  /*
-   * Portrait 9:16. WebKit often fails to give height from aspect-ratio when the
-   * only child is position:absolute (canvas), so width×height becomes landscape.
-   * In-flow ::before + padding-bottom establishes height reliably.
-   */
+/*
+ * Canvas is a replaced element: width + aspect-ratio give a real layout box
+ * (taller than wide, 9:16) without wrapper hacks. Events use this box.
+ */
+#c {
+  display: block;
   width: min(92vw, 420px, calc((100vh - 120px) * 9 / 16));
-  margin: 0 auto;
-  background: var(--canvas-bg);
-  border-radius: 26px;
-  overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
-}
-
-.phone-frame::before {
-  content: '';
-  display: block;
-  width: 100%;
-  /* height/width = 16/9 for 9:16 portrait (width shorter than height) */
-  padding-bottom: calc(100% * 16 / 9);
-}
-
-canvas {
-  display: block;
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
+  max-height: calc(100vh - 120px);
+  height: auto;
+  aspect-ratio: 9 / 16;
   touch-action: none;
   cursor: crosshair;
   background: var(--canvas-bg);
+  border-radius: 26px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .overlay {

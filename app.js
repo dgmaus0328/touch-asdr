@@ -135,12 +135,11 @@
     if (rafId == null) rafId = requestAnimationFrame(frame);
   }
 
-  const phoneFrame = canvas.closest('.phone-frame');
-  if (phoneFrame && typeof ResizeObserver !== 'undefined') {
+  if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(function () {
       resize();
       scheduleFrame();
-    }).observe(phoneFrame);
+    }).observe(canvas);
   }
 
   function attackVelocityFromSamples(samples, t0, r0, attackEnd) {
