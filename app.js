@@ -34,16 +34,18 @@
     return 32 + 2.2 * Math.sin(now * 0.055);
   }
 
+  /** Mouse reports tiny width/height (~1px); never use that as contact radius. */
   function radiusFromPointerEvent(e, now, t0) {
-    const w = e.width || 0;
-    const h = e.height || 0;
-    if (w > 0 || h > 0) {
-      return (w + h) / 4;
-    }
     if (e.pointerType === 'mouse') {
       return syntheticRadius(now, t0);
     }
-    return 22;
+    const w = e.width || 0;
+    const h = e.height || 0;
+    const geom = (w + h) / 4;
+    if (geom >= 2) {
+      return geom;
+    }
+    return syntheticRadius(now, t0);
   }
 
   const ATTACK_MS = 150;
