@@ -2,10 +2,14 @@
 """
 Emit a single index.html with inlined CSS + JS for hosts that serve .js with a
 wrong Content-Type (GitLab Pages + X-Content-Type-Options: nosniff blocks it).
+
+Body markup comes from project index.html (single source of truth) — only the
+stylesheet and script are inlined.
 """
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
 
 
@@ -17,29 +21,22 @@ def main() -> None:
     root = pathlib.Path(__file__).resolve().parent.parent
     css = (root / "styles.css").read_text(encoding="utf-8")
     js = (root / "app.js").read_text(encoding="utf-8")
-    # Break out of HTML parser if this sequence appears in source.
     js = js.replace("</script>", "<\\/script>")
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <title>Touch Envelope</title>
-  <style>
-{css}
-  </style>
-</head>
-<body>
-  <canvas id="c"></canvas>
-  <script>
-{js}
-  </script>
-</body>
-</html>
-"""
+    html = (root / "index.html").read_text(encoding="utf-8")
+    html = re.sub(
+        r'<link\s+rel="stylesheet"\s+href="styles\.css"\s*/>',
+        f"<style>\n{css}\n  </style>",
+        html,
+        count=1,
+    )
+    html = re.sub(
+        r'<script\s+src="app\.js"\s*>\s*</script>',
+        f"<script>\n{js}\n  </script>",
+        html,
+        count=1,
+    )
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "index.html").write_text(html, encoding="utf-8")
-    # Remove stale split assets from older deploys.
     for name in ("app.js", "styles.css"):
         p = dest / name
         if p.exists():
