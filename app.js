@@ -81,6 +81,9 @@ import {
   let rafId = null;
   let hapticTimer = null;
   let lastHapticTune = 0;
+  let visualizationMode = 1; // 1: Path+Crosshair, 2: Path only, 3: Path+Fixed, 4: Bubbles
+  const MAX_GHOSTS = 15;
+  const MAX_PATH_SEGMENTS = 100;
 
   function stopHaptics() {
     if (hapticTimer) {
@@ -117,6 +120,97 @@ import {
     ctx.restore();
   }
 
+  /**
+   * Draw finger path with radius variance visualization.
+   * @param {Array} samples - Array of {t, r, x, y} objects
+   * @param {number} minR - Minimum radius for normalization
+   * @param {number} maxR - Maximum radius for normalization
+   * @param {number} alpha - Overall opacity
+   * @param {number} mode - Visualization mode (1-4)
+   */
+  function drawFingerPath(samples, minR, maxR, alpha, mode) {
+    if (!samples || samples.length < 2) return;
+    if (!samples[0].x || !samples[0].y) return; // No position data
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#e8e8f0';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (mode === 4) {
+      // Mode 4: Bubble Trail - draw circles at sample points
+      ctx.strokeStyle = '#e8e8f088';
+      ctx.lineWidth = 1.5;
+      const step = Math.max(1, Math.floor(samples.length / 50)); // Max 50 circles
+      for (let i = 0; i < samples.length; i += step) {
+        const s = samples[i];
+        if (s.x !== undefined && s.y !== undefined && s.r !== undefined) {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r * 0.5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    } else {
+      // Modes 1-3: Draw path as connected line segments with varying thickness
+      const step = Math.max(1, Math.floor((samples.length - 1) / MAX_PATH_SEGMENTS));
+      for (let i = 0; i < samples.length - 1; i += step) {
+        const s0 = samples[i];
+        const s1 = samples[i + 1];
+        if (s0.x === undefined || s0.y === undefined) continue;
+        if (s1.x === undefined || s1.y === undefined) continue;
+
+        // Map radius to line width (2-10px range)
+        const rNorm = maxR > minR ? (s0.r - minR) / (maxR - minR) : 0.5;
+        const lineWidth = 2 + rNorm * 8;
+
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        ctx.moveTo(s0.x, s0.y);
+        ctx.lineTo(s1.x, s1.y);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Show mode indicator briefly on canvas
+   * @param {number} mode - Mode number (1-4)
+   */
+  function showModeIndicator(mode) {
+    const modeNames = ['', 'Path + Crosshair', 'Path Only', 'Path + Fixed', 'Bubble Trail'];
+    const modeName = modeNames[mode] || 'Unknown';
+
+    // Draw mode name on canvas temporarily
+    const indicatorDuration = 1000; // 1 second
+    const startTime = performance.now();
+
+    function drawIndicator() {
+      const elapsed = performance.now() - startTime;
+      if (elapsed > indicatorDuration) return;
+
+      const alpha = elapsed < 200 ? elapsed / 200 :
+                    elapsed > indicatorDuration - 200 ? (indicatorDuration - elapsed) / 200 : 1;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = '600 1.2rem system-ui, sans-serif';
+      ctx.fillStyle = '#e8e8f0';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`Mode ${mode}: ${modeName}`, canvas.width / (window.devicePixelRatio || 1) / 2, 60);
+      ctx.restore();
+
+      if (elapsed < indicatorDuration) {
+        requestAnimationFrame(drawIndicator);
+      }
+    }
+
+    requestAnimationFrame(drawIndicator);
+  }
+
   function frame() {
     rafId = null;
     const w = canvas.clientWidth;
@@ -125,7 +219,19 @@ import {
 
     for (let i = 0; i < ghosts.length; i++) {
       const g = ghosts[i];
-      drawCrosshair(g.x, g.y, g.halfLen, g.lineWidth, 0.2);
+
+      // Draw ghost path if available
+      if (g.path && g.path.length > 1 && visualizationMode >= 1 && visualizationMode <= 4) {
+        drawFingerPath(g.path, g.minR, g.peakR, 0.12, visualizationMode);
+      }
+
+      // Draw ghost crosshair at endpoint (or initial position)
+      if (visualizationMode !== 2) { // Show crosshair except in Path Only mode
+        const endPoint = (g.path && g.path.length > 0 && g.path[g.path.length - 1].x !== undefined)
+          ? g.path[g.path.length - 1]
+          : { x: g.x, y: g.y };
+        drawCrosshair(endPoint.x, endPoint.y, g.halfLen, g.lineWidth, 0.2);
+      }
     }
 
     if (active) {
@@ -155,7 +261,17 @@ import {
         active.lockedLineWidth
       );
 
-      drawCrosshair(active.x0, active.y0, halfLen, lw, 1);
+      // Draw path first (behind crosshair)
+      if (visualizationMode >= 1 && visualizationMode <= 4) {
+        drawFingerPath(active.samples, active.r0, active.peakR, 0.6, visualizationMode);
+      }
+
+      // Draw crosshair (mode-dependent)
+      if (visualizationMode !== 2) { // Show crosshair in all modes except Path Only
+        const crosshairX = (visualizationMode === 1) ? (active.currentX || active.x0) : active.x0;
+        const crosshairY = (visualizationMode === 1) ? (active.currentY || active.y0) : active.y0;
+        drawCrosshair(crosshairX, crosshairY, halfLen, lw, 1);
+      }
 
       scheduleFrame();
     }
@@ -185,9 +301,11 @@ import {
       y0: y0,
       t0: t0,
       r0: r0,
-      samples: [{ t: t0, r: r0 }],
+      samples: [{ t: t0, r: r0, x: x0, y: y0 }],
       peakR: r0,
       currentRadius: r0,
+      currentX: x0,
+      currentY: y0,
       tPeak: t0,
       attackVelocity: 0,
       sustainJitter: 0,
@@ -233,13 +351,16 @@ import {
     if (!active || active._touch || e.pointerId !== active.pointerId) return;
     const now = performance.now();
     const r = radiusFromPointerEvent(e, now, active.t0);
+    const p = canvasPointFromClient(e.clientX, e.clientY);
 
-    active.samples.push({ t: now, r: r });
+    active.samples.push({ t: now, r: r, x: p.x, y: p.y });
     if (r > active.peakR) {
       active.peakR = r;
       active.tPeak = now;
     }
     active.currentRadius = r;
+    active.currentX = p.x;
+    active.currentY = p.y;
 
     const attackEnd = active.t0 + ATTACK_MS;
     active.attackVelocity = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);
@@ -291,12 +412,25 @@ import {
 
     console.log(JSON.stringify(out));
 
+    // Downsample path for ghost (every 3rd sample)
+    const downsampledPath = active.samples.filter(function (s, i) {
+      return i % 3 === 0;
+    });
+
     ghosts.push({
       x: active.x0,
       y: active.y0,
       halfLen: ghostHalf,
-      lineWidth: ghostW
+      lineWidth: ghostW,
+      path: downsampledPath,
+      peakR: active.peakR,
+      minR: active.r0
     });
+
+    // Limit ghost count
+    if (ghosts.length > MAX_GHOSTS) {
+      ghosts.shift();
+    }
 
     stopHaptics();
     clearTouchCssVars();
@@ -351,13 +485,16 @@ import {
 
     const now = performance.now();
     const r = touchRadius(touch);
+    const p = canvasPointFromClient(touch.clientX, touch.clientY);
 
-    active.samples.push({ t: now, r: r });
+    active.samples.push({ t: now, r: r, x: p.x, y: p.y });
     if (r > active.peakR) {
       active.peakR = r;
       active.tPeak = now;
     }
     active.currentRadius = r;
+    active.currentX = p.x;
+    active.currentY = p.y;
 
     const attackEnd = active.t0 + ATTACK_MS;
     active.attackVelocity = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);
@@ -406,12 +543,25 @@ import {
 
     console.log(JSON.stringify(out));
 
+    // Downsample path for ghost (every 3rd sample)
+    const downsampledPath = active.samples.filter(function (s, i) {
+      return i % 3 === 0;
+    });
+
     ghosts.push({
       x: active.x0,
       y: active.y0,
       halfLen: ghostHalf,
-      lineWidth: ghostW
+      lineWidth: ghostW,
+      path: downsampledPath,
+      peakR: active.peakR,
+      minR: active.r0
     });
+
+    // Limit ghost count
+    if (ghosts.length > MAX_GHOSTS) {
+      ghosts.shift();
+    }
 
     stopHaptics();
     clearTouchCssVars();
@@ -446,4 +596,17 @@ import {
   document.documentElement.addEventListener('touchmove', function (e) {
     e.preventDefault();
   }, opts);
+
+  // Mode toggle button
+  const modeToggleBtn = document.getElementById('modeToggle');
+  if (modeToggleBtn) {
+    modeToggleBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      visualizationMode = (visualizationMode % 4) + 1;
+      modeToggleBtn.textContent = String(visualizationMode);
+      showModeIndicator(visualizationMode);
+      scheduleFrame(); // Redraw with new mode
+    });
+  }
 })();

@@ -204,6 +204,31 @@ export function buildGestureReport(active, tEnd, keyframes) {
     r: active.currentRadius
   };
   const allKeyframes = (keyframes || []).concat([releaseMilestone]);
+
+  // Calculate path metrics
+  let totalDistance = 0;
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+
+  for (let i = 0; i < active.samples.length; i++) {
+    const s = active.samples[i];
+    if (s.x !== undefined && s.y !== undefined) {
+      minX = Math.min(minX, s.x);
+      maxX = Math.max(maxX, s.x);
+      minY = Math.min(minY, s.y);
+      maxY = Math.max(maxY, s.y);
+
+      if (i > 0) {
+        const prev = active.samples[i - 1];
+        if (prev.x !== undefined && prev.y !== undefined) {
+          const dx = s.x - prev.x;
+          const dy = s.y - prev.y;
+          totalDistance += Math.sqrt(dx * dx + dy * dy);
+        }
+      }
+    }
+  }
+
   return {
     peakRadius: active.peakR,
     attackVelocity: finalAttack,
@@ -213,7 +238,17 @@ export function buildGestureReport(active, tEnd, keyframes) {
     msFromPeakToRelease,
     sustainJitter: sustainJitterFromSamples(active.samples, attackEnd),
     dwellNormAtEnd: dwellNormHalfLen(pressDurationMs),
-    keyframes: allKeyframes
+    keyframes: allKeyframes,
+    path: {
+      samples: active.samples,
+      totalDistance: totalDistance,
+      boundingBox: {
+        minX: minX,
+        maxX: maxX,
+        minY: minY,
+        maxY: maxY
+      }
+    }
   };
 }
 
