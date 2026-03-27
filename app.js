@@ -124,12 +124,13 @@ import {
   /**
    * Draw finger path with radius variance visualization.
    * @param {Array} samples - Array of {t, r, x, y} objects
+   * @param {number} t0 - Start time for calculating dwell per sample
    * @param {number} minR - Minimum radius for normalization
    * @param {number} maxR - Maximum radius for normalization
    * @param {number} alpha - Overall opacity
    * @param {number} mode - Visualization mode (1-4)
    */
-  function drawFingerPath(samples, minR, maxR, alpha, mode) {
+  function drawFingerPath(samples, t0, minR, maxR, alpha, mode) {
     if (!samples || samples.length < 2) return;
     if (!samples[0].x || !samples[0].y) return; // No position data
 
@@ -140,15 +141,17 @@ import {
     ctx.lineJoin = 'round';
 
     if (mode === 4) {
-      // Mode 4: Bubble Trail - draw circles at sample points
+      // Mode 4: Bubble Trail - draw circles at sample points using crosshair sizing logic
       ctx.strokeStyle = '#e8e8f088';
       ctx.lineWidth = 1.5;
       const step = Math.max(1, Math.floor(samples.length / 50)); // Max 50 circles
       for (let i = 0; i < samples.length; i += step) {
         const s = samples[i];
-        if (s.x !== undefined && s.y !== undefined && s.r !== undefined) {
+        if (s.x !== undefined && s.y !== undefined && s.r !== undefined && s.t !== undefined) {
+          const pressMs = s.t - t0;
+          const bubbleRadius = crosshairHalfLength(s.r, pressMs);
           ctx.beginPath();
-          ctx.arc(s.x, s.y, s.r * 0.5, 0, Math.PI * 2);
+          ctx.arc(s.x, s.y, bubbleRadius, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
@@ -186,8 +189,8 @@ import {
       const g = ghosts[i];
 
       // Draw ghost path if available
-      if (g.path && g.path.length > 1 && visualizationMode >= 1 && visualizationMode <= 4) {
-        drawFingerPath(g.path, g.minR, g.peakR, 0.12, visualizationMode);
+      if (g.path && g.path.length > 1 && g.t0 !== undefined && visualizationMode >= 1 && visualizationMode <= 4) {
+        drawFingerPath(g.path, g.t0, g.minR, g.peakR, 0.12, visualizationMode);
       }
 
       // Draw ghost crosshair at endpoint (or initial position)
@@ -219,16 +222,18 @@ import {
       applyTouchCssVars(live);
 
       const pressMs = now - active.t0;
-      const halfLen = crosshairHalfLength(active.currentRadius, pressMs);
+      // Use locked dwell time if finger has moved, otherwise use ongoing pressMs
+      const dwellMs = active.hasMoved && active.dwellPressMs !== null ? active.dwellPressMs : pressMs;
+      const halfLen = crosshairHalfLength(active.currentRadius, dwellMs);
       const lw = lineWidthFromAttackAndDwell(
         live.attackVelocity,
-        pressMs,
+        dwellMs,
         active.lockedLineWidth
       );
 
       // Draw path first (behind crosshair)
       if (visualizationMode >= 1 && visualizationMode <= 4) {
-        drawFingerPath(active.samples, active.r0, active.peakR, 0.6, visualizationMode);
+        drawFingerPath(active.samples, active.t0, active.r0, active.peakR, 0.6, visualizationMode);
       }
 
       // Draw crosshair (mode-dependent)
@@ -277,6 +282,8 @@ import {
       lineWidth: 2,
       lockedLineWidth: null,
       attackDone: false,
+      hasMoved: false,
+      dwellPressMs: null,
       keyframes: [],
       _milestoneAttackEndEmitted: false,
       _milestoneLastPeakR: r0
@@ -326,6 +333,17 @@ import {
     active.currentRadius = r;
     active.currentX = p.x;
     active.currentY = p.y;
+
+    // Detect movement - lock dwell when finger moves significantly
+    if (!active.hasMoved) {
+      const dx = p.x - active.x0;
+      const dy = p.y - active.y0;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 15) { // Movement threshold in pixels
+        active.hasMoved = true;
+        active.dwellPressMs = now - active.t0;
+      }
+    }
 
     const attackEnd = active.t0 + ATTACK_MS;
     active.attackVelocity = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);
@@ -388,6 +406,7 @@ import {
       halfLen: ghostHalf,
       lineWidth: ghostW,
       path: downsampledPath,
+      t0: active.t0,
       peakR: active.peakR,
       minR: active.r0
     });
@@ -461,6 +480,17 @@ import {
     active.currentX = p.x;
     active.currentY = p.y;
 
+    // Detect movement - lock dwell when finger moves significantly
+    if (!active.hasMoved) {
+      const dx = p.x - active.x0;
+      const dy = p.y - active.y0;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 15) { // Movement threshold in pixels
+        active.hasMoved = true;
+        active.dwellPressMs = now - active.t0;
+      }
+    }
+
     const attackEnd = active.t0 + ATTACK_MS;
     active.attackVelocity = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);
 
@@ -519,6 +549,7 @@ import {
       halfLen: ghostHalf,
       lineWidth: ghostW,
       path: downsampledPath,
+      t0: active.t0,
       peakR: active.peakR,
       minR: active.r0
     });
