@@ -141,15 +141,15 @@ import {
     ctx.lineJoin = 'round';
 
     if (mode === 4) {
-      // Mode 4: Bubble Trail - draw circles at sample points using crosshair sizing logic
+      // Mode 4: Bubble Trail - draw circles showing actual contact radius at each point
       ctx.strokeStyle = '#e8e8f088';
       ctx.lineWidth = 1.5;
       const step = Math.max(1, Math.floor(samples.length / 50)); // Max 50 circles
       for (let i = 0; i < samples.length; i += step) {
         const s = samples[i];
-        if (s.x !== undefined && s.y !== undefined && s.r !== undefined && s.t !== undefined) {
-          const pressMs = s.t - t0;
-          const bubbleRadius = crosshairHalfLength(s.r, pressMs);
+        if (s.x !== undefined && s.y !== undefined && s.r !== undefined) {
+          // Use actual radius at this sample point (reflects increases AND decreases)
+          const bubbleRadius = s.r;
           ctx.beginPath();
           ctx.arc(s.x, s.y, bubbleRadius, 0, Math.PI * 2);
           ctx.stroke();
