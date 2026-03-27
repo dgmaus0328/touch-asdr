@@ -20,6 +20,7 @@ import {
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
   const hintEl = document.getElementById('hint');
+  const modeLabelEl = document.getElementById('modeLabel');
   const root = document.documentElement;
 
   const CSS_TOUCH_VARS = [
@@ -173,42 +174,6 @@ import {
     }
 
     ctx.restore();
-  }
-
-  /**
-   * Show mode indicator briefly on canvas
-   * @param {number} mode - Mode number (1-4)
-   */
-  function showModeIndicator(mode) {
-    const modeNames = ['', 'Path + Crosshair', 'Path Only', 'Path + Fixed', 'Bubble Trail'];
-    const modeName = modeNames[mode] || 'Unknown';
-
-    // Draw mode name on canvas temporarily
-    const indicatorDuration = 1000; // 1 second
-    const startTime = performance.now();
-
-    function drawIndicator() {
-      const elapsed = performance.now() - startTime;
-      if (elapsed > indicatorDuration) return;
-
-      const alpha = elapsed < 200 ? elapsed / 200 :
-                    elapsed > indicatorDuration - 200 ? (indicatorDuration - elapsed) / 200 : 1;
-
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.font = '600 1.2rem system-ui, sans-serif';
-      ctx.fillStyle = '#e8e8f0';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(`Mode ${mode}: ${modeName}`, canvas.width / (window.devicePixelRatio || 1) / 2, 60);
-      ctx.restore();
-
-      if (elapsed < indicatorDuration) {
-        requestAnimationFrame(drawIndicator);
-      }
-    }
-
-    requestAnimationFrame(drawIndicator);
   }
 
   function frame() {
@@ -599,13 +564,17 @@ import {
 
   // Mode toggle button
   const modeToggleBtn = document.getElementById('modeToggle');
+  const modeNames = ['', 'Path + Crosshair', 'Path Only', 'Path + Fixed', 'Bubble Trail'];
+
   if (modeToggleBtn) {
     modeToggleBtn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
       visualizationMode = (visualizationMode % 4) + 1;
       modeToggleBtn.textContent = String(visualizationMode);
-      showModeIndicator(visualizationMode);
+      if (modeLabelEl) {
+        modeLabelEl.textContent = '— ' + modeNames[visualizationMode];
+      }
       scheduleFrame(); // Redraw with new mode
     });
   }

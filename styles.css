@@ -64,6 +64,12 @@ body {
   letter-spacing: 0.02em;
 }
 
+.mode-label {
+  font-weight: 400;
+  color: #6a6a72;
+  transition: color 0.2s ease;
+}
+
 .hint {
   position: absolute;
   left: 50%;
