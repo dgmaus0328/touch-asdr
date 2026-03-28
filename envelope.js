@@ -35,26 +35,7 @@ export function touchRadius(touch) {
 }
 
 /** Fake radius curve for mouse / pointer when real geometry is unusable. */
-export function syntheticRadius(now, t0) {
-  const dt = Math.max(0, now - t0);
-  if (dt <= ATTACK_MS) {
-    return 22 + (dt / ATTACK_MS) * 10;
-  }
-  return 32 + 2.2 * Math.sin(now * 0.055);
-}
-
-export function radiusFromPointerEvent(e, now, t0) {
-  if (e.pointerType === 'mouse') {
-    return syntheticRadius(now, t0);
-  }
-  const w = e.width || 0;
-  const h = e.height || 0;
-  const geom = (w + h) / 4;
-  if (geom >= MIN_TRUSTED_RADIUS) {
-    return geom;
-  }
-  return syntheticRadius(now, t0);
-}
+// Desktop/pointer functions removed - touch-only app now
 
 export function attackVelocityFromSamples(samples, t0, r0, attackEnd) {
   let best = 0;
@@ -105,13 +86,13 @@ export function dwellNormLineWidth(pressMs) {
 }
 
 export function crosshairHalfLength(radius, pressMs) {
-  return radius + dwellNormHalfLen(pressMs) * DWELL_HALF_LEN_MAX_BONUS;
+  return radius; // No dwell bonus - crosshair size equals actual radius
 }
 
 export function lineWidthFromAttackAndDwell(attackVelocity, pressMs, lockedAttackWidth) {
   const base =
     lockedAttackWidth != null ? lockedAttackWidth : lineWidthFromAttackVelocity(attackVelocity);
-  return Math.min(24, base + dwellNormLineWidth(pressMs) * DWELL_LINE_WIDTH_MAX_BONUS);
+  return Math.min(24, base); // No dwell bonus - line width from attack only
 }
 
 /**

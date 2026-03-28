@@ -1,8 +1,6 @@
 import {
   ATTACK_MS,
   touchRadius,
-  radiusFromPointerEvent,
-  syntheticRadius,
   attackVelocityFromSamples,
   sustainJitterFromSamples,
   buildGestureReport,
@@ -43,6 +41,33 @@ import {
       x: clientX - rect.left,
       y: clientY - rect.top
     };
+  }
+
+  /**
+   * Update movement state based on recent velocity
+   * @param {Object} active - Active gesture object
+   */
+  function updateMovementState(active) {
+    const VELOCITY_THRESHOLD = 15; // px/sec
+    const samples = active.recentSamples;
+
+    if (samples.length < 2) {
+      active.movementState = 'stationary';
+      return;
+    }
+
+    // Calculate average velocity from recent samples
+    let totalDist = 0;
+    for (let i = 1; i < samples.length; i++) {
+      const dx = samples[i].x - samples[i - 1].x;
+      const dy = samples[i].y - samples[i - 1].y;
+      totalDist += Math.sqrt(dx * dx + dy * dy);
+    }
+
+    const totalTime = samples[samples.length - 1].t - samples[0].t;
+    const velocity = totalTime > 0 ? (totalDist / totalTime) * 1000 : 0; // px/sec
+
+    active.movementState = velocity > VELOCITY_THRESHOLD ? 'moving' : 'stationary';
   }
 
   function applyTouchCssVars(live) {
@@ -205,13 +230,7 @@ import {
     if (active) {
       const now = performance.now();
 
-      if (!active._touch && active._pointerType === 'mouse') {
-        active.currentRadius = syntheticRadius(now, active.t0);
-        if (active.currentRadius > active.peakR) {
-          active.peakR = active.currentRadius;
-          active.tPeak = now;
-        }
-      }
+      // Desktop syntheticRadius code removed - touch-only app now
 
       const newMilestones = diffLiveMilestones(active, now);
       for (let m = 0; m < newMilestones.length; m++) {
@@ -221,13 +240,11 @@ import {
       const live = liveGestureState(active, now);
       applyTouchCssVars(live);
 
-      const pressMs = now - active.t0;
-      // Use locked dwell time if finger has moved, otherwise use ongoing pressMs
-      const dwellMs = active.hasMoved && active.dwellPressMs !== null ? active.dwellPressMs : pressMs;
-      const halfLen = crosshairHalfLength(active.currentRadius, dwellMs);
+      // No dwell bonus - crosshair size equals actual radius
+      const halfLen = crosshairHalfLength(active.currentRadius, 0);
       const lw = lineWidthFromAttackAndDwell(
         live.attackVelocity,
-        dwellMs,
+        0,
         active.lockedLineWidth
       );
 
@@ -236,10 +253,13 @@ import {
         drawFingerPath(active.samples, active.t0, active.r0, active.peakR, 0.6, visualizationMode);
       }
 
-      // Draw crosshair (mode-dependent)
-      if (visualizationMode !== 2) { // Show crosshair in all modes except Path Only
-        const crosshairX = (visualizationMode === 1) ? (active.currentX || active.x0) : active.x0;
-        const crosshairY = (visualizationMode === 1) ? (active.currentY || active.y0) : active.y0;
+      // Show crosshair only when stationary (or always in Mode 3)
+      const showCrosshair = visualizationMode === 3 ||
+                            (visualizationMode !== 2 && active.movementState === 'stationary');
+
+      if (showCrosshair) {
+        const crosshairX = (visualizationMode === 1) ? active.currentX : active.x0;
+        const crosshairY = (visualizationMode === 1) ? active.currentY : active.y0;
         drawCrosshair(crosshairX, crosshairY, halfLen, lw, 1);
       }
 
@@ -264,9 +284,9 @@ import {
     }
   }
 
-  function createActiveBase(t0, x0, y0, r0, pointerId, touchFlag, pointerType) {
+  function createActiveBase(t0, x0, y0, r0, touchId) {
     const base = {
-      pointerId: pointerId,
+      touchId: touchId,
       x0: x0,
       y0: y0,
       t0: t0,
@@ -282,163 +302,17 @@ import {
       lineWidth: 2,
       lockedLineWidth: null,
       attackDone: false,
-      hasMoved: false,
-      dwellPressMs: null,
+      movementState: 'stationary',
+      recentSamples: [{ x: x0, y: y0, t: t0 }],
       keyframes: [],
       _milestoneAttackEndEmitted: false,
       _milestoneLastPeakR: r0
     };
-    if (touchFlag) base._touch = true;
-    if (pointerType != null) base._pointerType = pointerType;
     base.keyframes.push(gestureStartMilestone(base));
     return base;
   }
 
-  function onPointerDown(e) {
-    if (e.pointerType === 'touch') return;
-    if (e.button !== 0) return;
-    e.preventDefault();
-    hideHintOnce();
-
-    const t0 = performance.now();
-    const p0 = canvasPointFromClient(e.clientX, e.clientY);
-    const x0 = p0.x;
-    const y0 = p0.y;
-    const r0 = radiusFromPointerEvent(e, t0, t0);
-
-    try {
-      canvas.setPointerCapture(e.pointerId);
-    } catch (_) {}
-
-    stopHaptics();
-
-    active = createActiveBase(t0, x0, y0, r0, e.pointerId, false, e.pointerType);
-    lastHapticTune = 0;
-    scheduleFrame();
-  }
-
-  function onPointerMove(e) {
-    if (e.pointerType === 'touch') return;
-    e.preventDefault();
-    if (!active || active._touch || e.pointerId !== active.pointerId) return;
-    const now = performance.now();
-    const r = radiusFromPointerEvent(e, now, active.t0);
-    const p = canvasPointFromClient(e.clientX, e.clientY);
-
-    active.samples.push({ t: now, r: r, x: p.x, y: p.y });
-    if (r > active.peakR) {
-      active.peakR = r;
-      active.tPeak = now;
-    }
-    active.currentRadius = r;
-    active.currentX = p.x;
-    active.currentY = p.y;
-
-    // Detect movement - lock dwell when finger moves significantly
-    if (!active.hasMoved) {
-      const dx = p.x - active.x0;
-      const dy = p.y - active.y0;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 15) { // Movement threshold in pixels
-        active.hasMoved = true;
-        active.dwellPressMs = now - active.t0;
-      }
-    }
-
-    const attackEnd = active.t0 + ATTACK_MS;
-    active.attackVelocity = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);
-
-    const lw = lineWidthFromAttackVelocity(active.attackVelocity);
-    active.lineWidth = lw;
-
-    if (!active.attackDone && now >= attackEnd) {
-      active.attackDone = true;
-      active.lockedLineWidth = lw;
-      active.sustainJitter = sustainJitterFromSamples(active.samples, attackEnd);
-      startSustainHaptics(active.sustainJitter);
-      lastHapticTune = now;
-    } else if (active.attackDone) {
-      active.sustainJitter = sustainJitterFromSamples(active.samples, attackEnd);
-      const prevJ = active._lastHapticJitter;
-      if (
-        prevJ === undefined ||
-        Math.abs(active.sustainJitter - prevJ) > 0.35 ||
-        now - lastHapticTune > 400
-      ) {
-        active._lastHapticJitter = active.sustainJitter;
-        lastHapticTune = now;
-        startSustainHaptics(active.sustainJitter);
-      }
-    }
-
-    scheduleFrame();
-  }
-
-  function endPointer(e) {
-    if (e.pointerType === 'touch') return;
-    e.preventDefault();
-    if (!active || active._touch || e.pointerId !== active.pointerId) return;
-
-    try {
-      canvas.releasePointerCapture(e.pointerId);
-    } catch (_) {}
-
-    const tEnd = performance.now();
-    const out = buildGestureReport(active, tEnd, active.keyframes);
-    const pressMs = tEnd - active.t0;
-    const ghostHalf = crosshairHalfLength(active.currentRadius, pressMs);
-    const ghostW = lineWidthFromAttackAndDwell(
-      out.attackVelocity,
-      pressMs,
-      active.lockedLineWidth
-    );
-
-    console.log(JSON.stringify(out));
-
-    // Downsample path for ghost (every 3rd sample)
-    const downsampledPath = active.samples.filter(function (s, i) {
-      return i % 3 === 0;
-    });
-
-    ghosts.push({
-      x: active.x0,
-      y: active.y0,
-      halfLen: ghostHalf,
-      lineWidth: ghostW,
-      path: downsampledPath,
-      t0: active.t0,
-      peakR: active.peakR,
-      minR: active.r0
-    });
-
-    // Limit ghost count
-    if (ghosts.length > MAX_GHOSTS) {
-      ghosts.shift();
-    }
-
-    stopHaptics();
-    clearTouchCssVars();
-    active = null;
-    scheduleFrame();
-  }
-
-  function onPointerUp(e) {
-    endPointer(e);
-  }
-
-  function onPointerCancel(e) {
-    endPointer(e);
-  }
-
-  function onLostPointerCapture(e) {
-    if (active && active._touch) return;
-    if (active && e.pointerId === active.pointerId) {
-      stopHaptics();
-      clearTouchCssVars();
-      active = null;
-      scheduleFrame();
-    }
-  }
+  // Desktop/pointer event handlers removed - touch-only app now
 
   function onTouchStart(e) {
     if (e.touches.length !== 1) return;
@@ -454,16 +328,16 @@ import {
 
     stopHaptics();
 
-    active = createActiveBase(t0, x0, y0, r0, touch.identifier, true, null);
+    active = createActiveBase(t0, x0, y0, r0, touch.identifier);
     lastHapticTune = 0;
     scheduleFrame();
   }
 
   function onTouchMove(e) {
     e.preventDefault();
-    if (!active || !active._touch) return;
+    if (!active) return;
     const touch = Array.prototype.find.call(e.touches, function (t) {
-      return t.identifier === active.pointerId;
+      return t.identifier === active.touchId;
     });
     if (!touch) return;
 
@@ -480,16 +354,14 @@ import {
     active.currentX = p.x;
     active.currentY = p.y;
 
-    // Detect movement - lock dwell when finger moves significantly
-    if (!active.hasMoved) {
-      const dx = p.x - active.x0;
-      const dy = p.y - active.y0;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 15) { // Movement threshold in pixels
-        active.hasMoved = true;
-        active.dwellPressMs = now - active.t0;
-      }
+    // Update recent samples for velocity tracking
+    active.recentSamples.push({ x: p.x, y: p.y, t: now });
+    if (active.recentSamples.length > 5) {
+      active.recentSamples.shift(); // Keep last 5 only
     }
+
+    // Update movement state based on velocity
+    updateMovementState(active);
 
     const attackEnd = active.t0 + ATTACK_MS;
     active.attackVelocity = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);
@@ -522,17 +394,16 @@ import {
 
   function onTouchEnd(e) {
     e.preventDefault();
-    if (!active || !active._touch) return;
+    if (!active) return;
     const still = e.touches.length > 0;
     if (still) return;
 
     const tEnd = performance.now();
     const out = buildGestureReport(active, tEnd, active.keyframes);
-    const pressMs = tEnd - active.t0;
-    const ghostHalf = crosshairHalfLength(active.currentRadius, pressMs);
+    const ghostHalf = crosshairHalfLength(active.currentRadius, 0); // No dwell bonus
     const ghostW = lineWidthFromAttackAndDwell(
       out.attackVelocity,
-      pressMs,
+      0,
       active.lockedLineWidth
     );
 
@@ -567,7 +438,7 @@ import {
 
   function onTouchCancel(e) {
     e.preventDefault();
-    if (!active || !active._touch) return;
+    if (!active) return;
     stopHaptics();
     clearTouchCssVars();
     active = null;
@@ -575,11 +446,7 @@ import {
   }
 
   const opts = { passive: false };
-  canvas.addEventListener('pointerdown', onPointerDown, opts);
-  canvas.addEventListener('pointermove', onPointerMove, opts);
-  canvas.addEventListener('pointerup', onPointerUp, opts);
-  canvas.addEventListener('pointercancel', onPointerCancel, opts);
-  canvas.addEventListener('lostpointercapture', onLostPointerCapture);
+  // Pointer event listeners removed - touch-only app now
 
   canvas.addEventListener('touchstart', onTouchStart, opts);
   canvas.addEventListener('touchmove', onTouchMove, opts);
