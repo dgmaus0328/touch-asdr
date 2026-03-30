@@ -168,11 +168,11 @@ import {
     ctx.lineJoin = 'round';
 
     if (mode === 4) {
-      // Mode 4: Bubble Trail - draw circles showing actual contact radius at each point
+      // Mode 4: Bubble Trail - draw circles at EVERY sample point to show all radius changes
       ctx.strokeStyle = '#e8e8f088';
       ctx.lineWidth = 1.5;
-      const step = Math.max(1, Math.floor(samples.length / 50)); // Max 50 circles
-      for (let i = 0; i < samples.length; i += step) {
+      // Draw ALL samples (no subsampling) so radius changes are immediately visible
+      for (let i = 0; i < samples.length; i++) {
         const s = samples[i];
         if (s.x !== undefined && s.y !== undefined && s.r !== undefined) {
           // Use actual radius at this sample point (reflects increases AND decreases)
