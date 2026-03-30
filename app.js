@@ -114,6 +114,7 @@ import {
   let hapticTimer = null;
   let lastHapticTune = 0;
   let visualizationMode = 1; // 1: Path+Crosshair, 2: Path only, 3: Path+Fixed, 4: Bubbles, 5: Radius Scale
+  let lastGestureJSON = null; // Store last gesture for sharing
   const MAX_GHOSTS = 15;
   const MAX_PATH_SEGMENTS = 100;
 
@@ -541,6 +542,13 @@ import {
 
     console.log(JSON.stringify(out));
 
+    // Store for sharing
+    lastGestureJSON = out;
+    const shareBtn = document.getElementById('shareBtn');
+    if (shareBtn) {
+      shareBtn.disabled = false;
+    }
+
     // Downsample path for ghost (every 3rd sample)
     const downsampledPath = active.samples.filter(function (s, i) {
       return i % 3 === 0;
@@ -606,6 +614,45 @@ import {
         modeLabelEl.textContent = '— ' + modeNames[visualizationMode];
       }
       scheduleFrame(); // Redraw with new mode
+    });
+  }
+
+  // Share JSON button
+  const shareBtn = document.getElementById('shareBtn');
+  if (shareBtn) {
+    shareBtn.disabled = true; // Start disabled until first gesture
+    shareBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!lastGestureJSON) {
+        alert('No gesture data yet. Perform a touch gesture first.');
+        return;
+      }
+
+      const jsonStr = JSON.stringify(lastGestureJSON, null, 2);
+      const subject = 'Touch Gesture Data - Mode ' + visualizationMode;
+      const body = 'Touch gesture JSON:\n\n' + jsonStr;
+
+      // Try mailto: first (has ~2000 char limit on some platforms)
+      if (body.length < 1500) {
+        const mailtoLink = 'mailto:david.goldberg@disney.com?subject=' +
+          encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+        window.location.href = mailtoLink;
+      } else {
+        // Too large for mailto, copy to clipboard instead
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(jsonStr).then(function () {
+            alert('JSON too large for email.\nCopied to clipboard instead!\n\nPaste it in your next message.');
+          }).catch(function () {
+            alert('Could not copy to clipboard.\nCheck console for JSON (F12).');
+            console.log('Gesture JSON:', jsonStr);
+          });
+        } else {
+          alert('Clipboard not available.\nCheck console for JSON (F12).');
+          console.log('Gesture JSON:', jsonStr);
+        }
+      }
     });
   }
 })();
