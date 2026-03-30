@@ -58,48 +58,48 @@ import {
 
   /**
    * Convert velocity to thermal color (for Mode 6)
-   * Slow movement = hot (red), fast movement = cool (blue)
+   * Slow movement = cool (blue), fast movement = hot (red)
    * @param {number} velocity - Current velocity in px/sec
    * @returns {Object} RGB color object {r, g, b}
    */
   function velocityToThermalColor(velocity) {
-    // Color stops:
-    // 0-10 px/sec: Red (hot, dwelling)
-    // 10-30: Orange
+    // Color stops (reversed):
+    // 0-10 px/sec: Dark blue (cool, dwelling)
+    // 10-30: Light blue
     // 30-50: Yellow
-    // 50-100: Light blue (cooling)
-    // 100+: Dark blue (cold, fast)
+    // 50-100: Orange (heating)
+    // 100+: Red (hot, fast)
 
     if (velocity < 10) {
-      // Very slow - deep red
-      return { r: 220, g: 40, b: 40 };
+      // Very slow - deep blue (cool)
+      return { r: 40, g: 100, b: 220 };
     } else if (velocity < 30) {
-      // Slow - orange
+      // Slow - light blue
       const t = (velocity - 10) / 20; // 0-1
       return {
-        r: Math.round(220 - t * 20), // 220->200
-        g: Math.round(40 + t * 80),  // 40->120
-        b: 40
+        r: Math.round(40 + t * 140),  // 40->180
+        g: Math.round(100 + t * 100), // 100->200
+        b: Math.round(220 - t * 180)  // 220->40
       };
     } else if (velocity < 50) {
       // Medium - yellow
       const t = (velocity - 30) / 20; // 0-1
       return {
-        r: Math.round(200 - t * 20), // 200->180
-        g: Math.round(120 + t * 80), // 120->200
+        r: Math.round(180 + t * 20), // 180->200
+        g: Math.round(200 - t * 80), // 200->120
         b: 40
       };
     } else if (velocity < 100) {
-      // Fast - cooling to blue
+      // Fast - orange (heating)
       const t = (velocity - 50) / 50; // 0-1
       return {
-        r: Math.round(180 - t * 140), // 180->40
-        g: Math.round(200 - t * 100), // 200->100
-        b: Math.round(40 + t * 180)   // 40->220
+        r: Math.round(200 + t * 20), // 200->220
+        g: Math.round(120 - t * 80), // 120->40
+        b: 40
       };
     } else {
-      // Very fast - deep blue
-      return { r: 40, g: 100, b: 220 };
+      // Very fast - deep red (hot)
+      return { r: 220, g: 40, b: 40 };
     }
   }
 
