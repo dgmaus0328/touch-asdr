@@ -35,17 +35,36 @@ export function touchRadius(touch) {
 }
 
 /**
+ * Normalize force/pressure value to usable range.
+ * Standard force: already 0-1, scale to 0-2
+ * webkitForce: observed range ~5-70, normalize to 0-2
+ */
+export function normalizeForce(rawForce, isWebkit) {
+  if (rawForce === null || rawForce === undefined || rawForce <= 0) {
+    return 0;
+  }
+
+  if (isWebkit) {
+    // webkitForce empirical range: ~5-10 light, ~40-70 hard
+    // Map to 0-2 range: divide by 35, clamp to 2 max
+    return Math.min(2, Math.max(0, rawForce / 35));
+  }
+  // Standard force is 0-1, scale to match webkit range (0-2)
+  return Math.min(2, Math.max(0, rawForce * 2));
+}
+
+/**
  * Calculate effective radius using base contact area + force (pressure)
- * iOS provides radiusX/Y (contact area) and force (pressure 0-1)
- * We scale the radius based on force to show pressure changes
+ * iOS provides radiusX/Y (contact area) and force (pressure)
+ * We scale the radius based on normalized force to show pressure changes
  */
 export function radiusWithForce(baseRadius, force) {
   if (force === null || force === undefined || force <= 0) {
     return baseRadius;
   }
-  // Map force (0-1) to radius scale (0.5x to 2x)
-  // Typical light touch: ~0.3, normal: ~0.5-0.7, hard press: ~1.0
-  const scale = 0.5 + (force * 1.5); // 0.5 at force=0, 2.0 at force=1
+  // Map normalized force (0-2) to radius scale (0.5x to 2.5x)
+  // Light: 0.5 -> 0.75x, Normal: 1.0 -> 1.25x, Hard: 2.0 -> 2.25x
+  const scale = 0.5 + (force * 0.75);
   return baseRadius * scale;
 }
 
