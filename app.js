@@ -60,7 +60,7 @@ import {
    * Convert velocity to thermal color (for Mode 6)
    * Slow movement = hot (red), fast movement = cool (blue)
    * @param {number} velocity - Current velocity in px/sec
-   * @returns {string} RGB color string
+   * @returns {Object} RGB color object {r, g, b}
    */
   function velocityToThermalColor(velocity) {
     // Color stops:
@@ -72,30 +72,59 @@ import {
 
     if (velocity < 10) {
       // Very slow - deep red
-      return 'rgb(220, 40, 40)';
+      return { r: 220, g: 40, b: 40 };
     } else if (velocity < 30) {
       // Slow - orange
       const t = (velocity - 10) / 20; // 0-1
-      const r = Math.round(220 - t * 20); // 220->200
-      const g = Math.round(40 + t * 80); // 40->120
-      return 'rgb(' + r + ', ' + g + ', 40)';
+      return {
+        r: Math.round(220 - t * 20), // 220->200
+        g: Math.round(40 + t * 80),  // 40->120
+        b: 40
+      };
     } else if (velocity < 50) {
       // Medium - yellow
       const t = (velocity - 30) / 20; // 0-1
-      const r = Math.round(200 - t * 20); // 200->180
-      const g = Math.round(120 + t * 80); // 120->200
-      return 'rgb(' + r + ', ' + g + ', 40)';
+      return {
+        r: Math.round(200 - t * 20), // 200->180
+        g: Math.round(120 + t * 80), // 120->200
+        b: 40
+      };
     } else if (velocity < 100) {
       // Fast - cooling to blue
       const t = (velocity - 50) / 50; // 0-1
-      const r = Math.round(180 - t * 140); // 180->40
-      const g = Math.round(200 - t * 100); // 200->100
-      const b = Math.round(40 + t * 180); // 40->220
-      return 'rgb(' + r + ', ' + g + ', ' + b + ')';
+      return {
+        r: Math.round(180 - t * 140), // 180->40
+        g: Math.round(200 - t * 100), // 200->100
+        b: Math.round(40 + t * 180)   // 40->220
+      };
     } else {
       // Very fast - deep blue
-      return 'rgb(40, 100, 220)';
+      return { r: 40, g: 100, b: 220 };
     }
+  }
+
+  /**
+   * Interpolate between two colors
+   * @param {Object} from - Starting color {r, g, b}
+   * @param {Object} to - Target color {r, g, b}
+   * @param {number} speed - Interpolation speed (0-1)
+   * @returns {Object} Interpolated color {r, g, b}
+   */
+  function interpolateColor(from, to, speed) {
+    return {
+      r: Math.round(from.r + (to.r - from.r) * speed),
+      g: Math.round(from.g + (to.g - from.g) * speed),
+      b: Math.round(from.b + (to.b - from.b) * speed)
+    };
+  }
+
+  /**
+   * Convert color object to CSS string
+   * @param {Object} color - Color object {r, g, b}
+   * @returns {string} CSS rgb() string
+   */
+  function colorToString(color) {
+    return 'rgb(' + color.r + ', ' + color.g + ', ' + color.b + ')';
   }
 
   /**
@@ -167,7 +196,9 @@ import {
   let visualizationMode = 1; // 1: Path+Crosshair, 2: Path only, 3: Path+Fixed, 4: Bubbles, 5: Radius Scale, 6: Thermal
   let lastGestureJSON = null; // Store last gesture for sharing
   let thermalCooldownTimer = null; // For Mode 6 fade-out
-  let currentThermalColor = null; // Track current thermal background
+  let currentThermalColor = null; // Track current thermal background (parsed as {r, g, b})
+  let targetThermalColor = null; // Target color to interpolate toward
+  const THERMAL_INTERPOLATION_SPEED = 0.15; // How fast colors transition (0-1, higher = faster)
   const MAX_GHOSTS = 15;
   const MAX_PATH_SEGMENTS = 100;
 
@@ -272,7 +303,7 @@ import {
     // Mode 6 (Thermal): Fill background with velocity-based color
     if (visualizationMode === 6) {
       if (currentThermalColor) {
-        ctx.fillStyle = currentThermalColor;
+        ctx.fillStyle = colorToString(currentThermalColor);
         ctx.fillRect(0, 0, w, h);
       } else {
         ctx.clearRect(0, 0, w, h);
@@ -379,9 +410,17 @@ import {
           thermalCooldownTimer = null;
         }
 
-        // Update thermal color based on current velocity
+        // Initialize current color if first frame (start at neutral gray)
+        if (!currentThermalColor) {
+          currentThermalColor = { r: 58, g: 58, b: 66 }; // Match stage-bg #3a3a42
+        }
+
+        // Set target color based on current velocity
         const velocity = active.currentVelocity || 0;
-        currentThermalColor = velocityToThermalColor(velocity);
+        targetThermalColor = velocityToThermalColor(velocity);
+
+        // Smoothly interpolate toward target color
+        currentThermalColor = interpolateColor(currentThermalColor, targetThermalColor, THERMAL_INTERPOLATION_SPEED);
 
         // No drawing - color is applied at frame start
       } else {
@@ -426,30 +465,21 @@ import {
             if (cooldownStep >= maxSteps) {
               // Cooldown complete - clear color
               currentThermalColor = null;
+              targetThermalColor = null;
               clearInterval(thermalCooldownTimer);
               thermalCooldownTimer = null;
               scheduleFrame();
             } else {
               // Fade to neutral gray
-              const targetR = 58; // #3a3a42 (stage-bg)
-              const targetG = 58;
-              const targetB = 66;
+              const target = { r: 58, g: 58, b: 66 }; // #3a3a42 (stage-bg)
 
-              // Parse current color
-              const match = currentThermalColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-              if (match) {
-                const currentR = parseInt(match[1]);
-                const currentG = parseInt(match[2]);
-                const currentB = parseInt(match[3]);
-
-                // Interpolate toward target
-                const newR = Math.round(currentR + (targetR - currentR) * progress);
-                const newG = Math.round(currentG + (targetG - currentG) * progress);
-                const newB = Math.round(currentB + (targetB - currentB) * progress);
-
-                currentThermalColor = 'rgb(' + newR + ', ' + newG + ', ' + newB + ')';
-                scheduleFrame();
-              }
+              // Interpolate toward target
+              currentThermalColor = {
+                r: Math.round(currentThermalColor.r + (target.r - currentThermalColor.r) * progress),
+                g: Math.round(currentThermalColor.g + (target.g - currentThermalColor.g) * progress),
+                b: Math.round(currentThermalColor.b + (target.b - currentThermalColor.b) * progress)
+              };
+              scheduleFrame();
             }
           }, 16); // ~60fps
         }
@@ -735,6 +765,7 @@ import {
       // Clear thermal state when switching modes
       if (visualizationMode !== 6) {
         currentThermalColor = null;
+        targetThermalColor = null;
         if (thermalCooldownTimer) {
           clearInterval(thermalCooldownTimer);
           thermalCooldownTimer = null;
