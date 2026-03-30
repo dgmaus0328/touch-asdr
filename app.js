@@ -21,6 +21,7 @@ import {
   const modeLabelEl = document.getElementById('modeLabel');
   const radiusDisplayEl = document.getElementById('radiusDisplay');
   const radiusValueEl = document.getElementById('radiusValue');
+  const radiusRawValueEl = document.getElementById('radiusRawValue');
   const root = document.documentElement;
 
   const CSS_TOUCH_VARS = [
@@ -250,11 +251,13 @@ import {
         active.lockedLineWidth
       );
 
-      // Mode 5: Radius Scale - show numeric radius value
+      // Mode 5: Radius Scale - show numeric radius value (clamped + raw)
       if (visualizationMode === 5) {
-        if (radiusDisplayEl && radiusValueEl) {
+        if (radiusDisplayEl && radiusValueEl && radiusRawValueEl) {
           radiusDisplayEl.style.display = 'block';
           radiusValueEl.textContent = active.currentRadius.toFixed(1);
+          const rawAvg = active.rawRadiusAvg !== undefined ? active.rawRadiusAvg.toFixed(2) : '--';
+          radiusRawValueEl.textContent = rawAvg;
         }
         // Draw simple crosshair at current position
         const crosshairX = active.currentX;
@@ -368,6 +371,13 @@ import {
     const now = performance.now();
     const r = touchRadius(touch);
     const p = canvasPointFromClient(touch.clientX, touch.clientY);
+
+    // Store raw radius values for debugging in Mode 5
+    const rx = touch.radiusX || 0;
+    const ry = touch.radiusY || 0;
+    active.rawRadiusX = rx;
+    active.rawRadiusY = ry;
+    active.rawRadiusAvg = (rx + ry) / 2;
 
     active.samples.push({ t: now, r: r, x: p.x, y: p.y });
     if (r > active.peakR) {

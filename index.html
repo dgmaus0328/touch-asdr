@@ -19,9 +19,16 @@
       <span class="hint-sub">Release to log JSON in the browser console (F12 → Console).</span>
     </p>
     <div id="radiusDisplay" class="radius-display" style="display: none;">
-      <span class="radius-label">Radius:</span>
-      <span id="radiusValue" class="radius-value">--</span>
-      <span class="radius-unit">px</span>
+      <div class="radius-row">
+        <span class="radius-label">Clamped:</span>
+        <span id="radiusValue" class="radius-value">--</span>
+        <span class="radius-unit">px</span>
+      </div>
+      <div class="radius-row radius-raw">
+        <span class="radius-label">Raw:</span>
+        <span id="radiusRawValue" class="radius-value-small">--</span>
+        <span class="radius-unit">px</span>
+      </div>
     </div>
   </div>
   <script type="module" src="app.js"></script>
