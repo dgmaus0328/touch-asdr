@@ -57,6 +57,48 @@ import {
   }
 
   /**
+   * Convert velocity to thermal color (for Mode 6)
+   * Slow movement = hot (red), fast movement = cool (blue)
+   * @param {number} velocity - Current velocity in px/sec
+   * @returns {string} RGB color string
+   */
+  function velocityToThermalColor(velocity) {
+    // Color stops:
+    // 0-10 px/sec: Red (hot, dwelling)
+    // 10-30: Orange
+    // 30-50: Yellow
+    // 50-100: Light blue (cooling)
+    // 100+: Dark blue (cold, fast)
+
+    if (velocity < 10) {
+      // Very slow - deep red
+      return 'rgb(220, 40, 40)';
+    } else if (velocity < 30) {
+      // Slow - orange
+      const t = (velocity - 10) / 20; // 0-1
+      const r = Math.round(220 - t * 20); // 220->200
+      const g = Math.round(40 + t * 80); // 40->120
+      return 'rgb(' + r + ', ' + g + ', 40)';
+    } else if (velocity < 50) {
+      // Medium - yellow
+      const t = (velocity - 30) / 20; // 0-1
+      const r = Math.round(200 - t * 20); // 200->180
+      const g = Math.round(120 + t * 80); // 120->200
+      return 'rgb(' + r + ', ' + g + ', 40)';
+    } else if (velocity < 100) {
+      // Fast - cooling to blue
+      const t = (velocity - 50) / 50; // 0-1
+      const r = Math.round(180 - t * 140); // 180->40
+      const g = Math.round(200 - t * 100); // 200->100
+      const b = Math.round(40 + t * 180); // 40->220
+      return 'rgb(' + r + ', ' + g + ', ' + b + ')';
+    } else {
+      // Very fast - deep blue
+      return 'rgb(40, 100, 220)';
+    }
+  }
+
+  /**
    * Update movement state based on recent velocity
    * @param {Object} active - Active gesture object
    */
@@ -122,8 +164,10 @@ import {
   let rafId = null;
   let hapticTimer = null;
   let lastHapticTune = 0;
-  let visualizationMode = 1; // 1: Path+Crosshair, 2: Path only, 3: Path+Fixed, 4: Bubbles, 5: Radius Scale
+  let visualizationMode = 1; // 1: Path+Crosshair, 2: Path only, 3: Path+Fixed, 4: Bubbles, 5: Radius Scale, 6: Thermal
   let lastGestureJSON = null; // Store last gesture for sharing
+  let thermalCooldownTimer = null; // For Mode 6 fade-out
+  let currentThermalColor = null; // Track current thermal background
   const MAX_GHOSTS = 15;
   const MAX_PATH_SEGMENTS = 100;
 
@@ -224,22 +268,36 @@ import {
     rafId = null;
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
-    ctx.clearRect(0, 0, w, h);
 
-    for (let i = 0; i < ghosts.length; i++) {
-      const g = ghosts[i];
-
-      // Draw ghost path if available
-      if (g.path && g.path.length > 1 && g.t0 !== undefined && visualizationMode >= 1 && visualizationMode <= 4) {
-        drawFingerPath(g.path, g.t0, g.minR, g.peakR, 0.12, visualizationMode);
+    // Mode 6 (Thermal): Fill background with velocity-based color
+    if (visualizationMode === 6) {
+      if (currentThermalColor) {
+        ctx.fillStyle = currentThermalColor;
+        ctx.fillRect(0, 0, w, h);
+      } else {
+        ctx.clearRect(0, 0, w, h);
       }
+    } else {
+      ctx.clearRect(0, 0, w, h);
+    }
 
-      // Draw ghost crosshair at endpoint (or initial position)
-      if (visualizationMode !== 2) { // Show crosshair except in Path Only mode
-        const endPoint = (g.path && g.path.length > 0 && g.path[g.path.length - 1].x !== undefined)
-          ? g.path[g.path.length - 1]
-          : { x: g.x, y: g.y };
-        drawCrosshair(endPoint.x, endPoint.y, g.halfLen, g.lineWidth, 0.2);
+    // Skip ghost drawing in Mode 6 (thermal mode)
+    if (visualizationMode !== 6) {
+      for (let i = 0; i < ghosts.length; i++) {
+        const g = ghosts[i];
+
+        // Draw ghost path if available
+        if (g.path && g.path.length > 1 && g.t0 !== undefined && visualizationMode >= 1 && visualizationMode <= 4) {
+          drawFingerPath(g.path, g.t0, g.minR, g.peakR, 0.12, visualizationMode);
+        }
+
+        // Draw ghost crosshair at endpoint (or initial position)
+        if (visualizationMode !== 2) { // Show crosshair except in Path Only mode
+          const endPoint = (g.path && g.path.length > 0 && g.path[g.path.length - 1].x !== undefined)
+            ? g.path[g.path.length - 1]
+            : { x: g.x, y: g.y };
+          drawCrosshair(endPoint.x, endPoint.y, g.halfLen, g.lineWidth, 0.2);
+        }
       }
     }
 
@@ -308,8 +366,26 @@ import {
         const crosshairX = active.currentX;
         const crosshairY = active.currentY;
         drawCrosshair(crosshairX, crosshairY, halfLen, lw, 1);
+      } else if (visualizationMode === 6) {
+        // Mode 6: Thermal - update background color based on velocity
+        // Hide radius display
+        if (radiusDisplayEl) {
+          radiusDisplayEl.style.display = 'none';
+        }
+
+        // Clear any cooldown timer
+        if (thermalCooldownTimer) {
+          clearInterval(thermalCooldownTimer);
+          thermalCooldownTimer = null;
+        }
+
+        // Update thermal color based on current velocity
+        const velocity = active.currentVelocity || 0;
+        currentThermalColor = velocityToThermalColor(velocity);
+
+        // No drawing - color is applied at frame start
       } else {
-        // Hide radius display in other modes
+        // Modes 1-4: Hide radius display
         if (radiusDisplayEl) {
           radiusDisplayEl.style.display = 'none';
         }
@@ -335,6 +411,48 @@ import {
       // No active gesture - hide radius display
       if (radiusDisplayEl) {
         radiusDisplayEl.style.display = 'none';
+      }
+
+      // Mode 6: Thermal cooldown after touch ends
+      if (visualizationMode === 6 && currentThermalColor) {
+        // Start cooldown if not already running
+        if (!thermalCooldownTimer) {
+          let cooldownStep = 0;
+          const maxSteps = 30; // Fade over ~0.5 seconds (30 frames at 60fps)
+          thermalCooldownTimer = setInterval(function () {
+            cooldownStep++;
+            const progress = cooldownStep / maxSteps;
+
+            if (cooldownStep >= maxSteps) {
+              // Cooldown complete - clear color
+              currentThermalColor = null;
+              clearInterval(thermalCooldownTimer);
+              thermalCooldownTimer = null;
+              scheduleFrame();
+            } else {
+              // Fade to neutral gray
+              const targetR = 58; // #3a3a42 (stage-bg)
+              const targetG = 58;
+              const targetB = 66;
+
+              // Parse current color
+              const match = currentThermalColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+              if (match) {
+                const currentR = parseInt(match[1]);
+                const currentG = parseInt(match[2]);
+                const currentB = parseInt(match[3]);
+
+                // Interpolate toward target
+                const newR = Math.round(currentR + (targetR - currentR) * progress);
+                const newG = Math.round(currentG + (targetG - currentG) * progress);
+                const newB = Math.round(currentB + (targetB - currentB) * progress);
+
+                currentThermalColor = 'rgb(' + newR + ', ' + newG + ', ' + newB + ')';
+                scheduleFrame();
+              }
+            }
+          }, 16); // ~60fps
+        }
       }
     }
   }
@@ -602,17 +720,27 @@ import {
 
   // Mode toggle button
   const modeToggleBtn = document.getElementById('modeToggle');
-  const modeNames = ['', 'Path + Crosshair', 'Path Only', 'Path + Fixed', 'Bubble Trail', 'Radius Scale'];
+  const modeNames = ['', 'Path + Crosshair', 'Path Only', 'Path + Fixed', 'Bubble Trail', 'Radius Scale', 'Thermal'];
 
   if (modeToggleBtn) {
     modeToggleBtn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
-      visualizationMode = (visualizationMode % 5) + 1;
+      visualizationMode = (visualizationMode % 6) + 1;
       modeToggleBtn.textContent = String(visualizationMode);
       if (modeLabelEl) {
         modeLabelEl.textContent = '— ' + modeNames[visualizationMode];
       }
+
+      // Clear thermal state when switching modes
+      if (visualizationMode !== 6) {
+        currentThermalColor = null;
+        if (thermalCooldownTimer) {
+          clearInterval(thermalCooldownTimer);
+          thermalCooldownTimer = null;
+        }
+      }
+
       scheduleFrame(); // Redraw with new mode
     });
   }
