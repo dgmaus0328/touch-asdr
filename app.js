@@ -11,7 +11,12 @@ import {
   liveGestureState,
   diffLiveMilestones,
   crosshairHalfLength,
-  lineWidthFromAttackAndDwell
+  lineWidthFromAttackAndDwell,
+  velocityBetweenSamples,
+  velocityRadiusDelta,
+  radiusWithVelocityModulation,
+  VELOCITY_SLOW_THRESHOLD,
+  VELOCITY_FAST_THRESHOLD
 } from './envelope.js';
 
 (function () {
@@ -37,7 +42,9 @@ import {
     '--touch-dwell-norm-line',
     '--touch-x',
     '--touch-y',
-    '--touch-attack-velocity'
+    '--touch-attack-velocity',
+    '--touch-current-velocity',
+    '--touch-velocity-bonus'
   ];
 
   /** Canvas-local CSS pixels (matches drawing after DPR transform). */
@@ -87,6 +94,8 @@ import {
     root.style.setProperty('--touch-x', String(live.coordinates.x.toFixed(2)));
     root.style.setProperty('--touch-y', String(live.coordinates.y.toFixed(2)));
     root.style.setProperty('--touch-attack-velocity', String(live.attackVelocity.toFixed(4)));
+    root.style.setProperty('--touch-current-velocity', String((live.currentVelocity || 0).toFixed(2)));
+    root.style.setProperty('--touch-velocity-bonus', String((live.velocityBonus || 0).toFixed(2)));
   }
 
   function clearTouchCssVars() {
@@ -245,6 +254,9 @@ import {
       }
 
       const live = liveGestureState(active, now);
+      // Add velocity data to live state
+      live.currentVelocity = active.currentVelocity || 0;
+      live.velocityBonus = active.velocityBonus || 0;
       applyTouchCssVars(live);
 
       // No dwell bonus - crosshair size equals actual radius
@@ -280,6 +292,16 @@ import {
               forceText = norm + ' (' + raw + ')';
             }
             forceValueEl.textContent = forceText;
+          }
+
+          const currentVelocityValueEl = document.getElementById('currentVelocityValue');
+          if (currentVelocityValueEl) {
+            currentVelocityValueEl.textContent = (active.currentVelocity || 0).toFixed(1);
+          }
+
+          const velocityBonusValueEl = document.getElementById('velocityBonusValue');
+          if (velocityBonusValueEl) {
+            velocityBonusValueEl.textContent = (active.velocityBonus || 0).toFixed(1);
           }
         }
         // Draw simple crosshair at current position
@@ -354,6 +376,10 @@ import {
       attackDone: false,
       movementState: 'stationary',
       recentSamples: [{ x: x0, y: y0, t: t0 }],
+      baseRadius: r0, // Store initial force-adjusted radius as baseline
+      velocityBonus: 0, // Accumulated bonus from dwelling (positive) or fast movement (negative)
+      lastVelocityUpdateTime: t0, // Track time for delta calculations
+      currentVelocity: 0, // Store last calculated velocity for JSON export
       keyframes: [],
       _milestoneAttackEndEmitted: false,
       _milestoneLastPeakR: r0
@@ -443,6 +469,32 @@ import {
 
     // Update movement state based on velocity
     updateMovementState(active);
+
+    // Calculate instantaneous velocity for size modulation
+    if (active.samples.length >= 2) {
+      const currentSample = active.samples[active.samples.length - 1];
+      const prevSample = active.samples[active.samples.length - 2];
+      active.currentVelocity = velocityBetweenSamples(currentSample, prevSample);
+
+      // Update velocity bonus based on time since last update
+      const dtSeconds = (now - active.lastVelocityUpdateTime) / 1000;
+      const delta = velocityRadiusDelta(active.currentVelocity, dtSeconds);
+      active.velocityBonus += delta;
+      active.lastVelocityUpdateTime = now;
+
+      // Apply velocity modulation to current radius
+      const modulatedRadius = radiusWithVelocityModulation(active.baseRadius, active.velocityBonus);
+      active.currentRadius = modulatedRadius;
+
+      // Update the sample with modulated radius
+      active.samples[active.samples.length - 1].r = modulatedRadius;
+
+      // Update peakR if modulated radius is larger
+      if (modulatedRadius > active.peakR) {
+        active.peakR = modulatedRadius;
+        active.tPeak = now;
+      }
+    }
 
     const attackEnd = active.t0 + ATTACK_MS;
     active.attackVelocity = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);

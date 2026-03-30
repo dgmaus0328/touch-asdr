@@ -77,6 +77,60 @@ export function radiusWithForce(baseRadius, force) {
   return baseRadius * scale;
 }
 
+/**
+ * Calculate velocity between two samples (px/sec)
+ */
+export function velocityBetweenSamples(s1, s0) {
+  const dx = s1.x - s0.x;
+  const dy = s1.y - s0.y;
+  const dt = (s1.t - s0.t) / 1000; // seconds
+  if (dt <= 0) return 0;
+  return Math.sqrt(dx * dx + dy * dy) / dt;
+}
+
+/**
+ * Constants for velocity-based size modulation
+ */
+export const VELOCITY_SLOW_THRESHOLD = 15; // px/sec - below this = "dwelling"
+export const VELOCITY_FAST_THRESHOLD = 50; // px/sec - above this = "fast movement"
+export const DWELL_GROWTH_RATE = 5; // px added per second when slow
+export const FAST_DECAY_RATE = 10; // px removed per second when fast
+export const MAX_VELOCITY_BONUS = 50; // px maximum growth from dwelling
+export const MIN_VELOCITY_SCALE = 0.5; // minimum multiplier (can't shrink below 0.5x initial)
+
+/**
+ * Calculate velocity-based radius adjustment over time
+ * Returns the delta to add to current radius based on velocity
+ */
+export function velocityRadiusDelta(velocity, dtSeconds) {
+  if (velocity < VELOCITY_SLOW_THRESHOLD) {
+    // Dwelling - grow radius
+    return DWELL_GROWTH_RATE * dtSeconds;
+  } else if (velocity > VELOCITY_FAST_THRESHOLD) {
+    // Fast movement - shrink radius
+    return -FAST_DECAY_RATE * dtSeconds;
+  }
+  // Medium velocity (15-50 px/sec) - no change
+  return 0;
+}
+
+/**
+ * Apply velocity-based radius modulation
+ * @param {number} baseRadius - Initial radius from force
+ * @param {number} velocityBonus - Accumulated bonus from dwelling (can be negative)
+ * @returns {number} Final radius clamped to reasonable bounds
+ */
+export function radiusWithVelocityModulation(baseRadius, velocityBonus) {
+  // Clamp velocity bonus to max range
+  const clampedBonus = Math.max(-baseRadius * MIN_VELOCITY_SCALE,
+                                 Math.min(MAX_VELOCITY_BONUS, velocityBonus));
+  const finalRadius = baseRadius + clampedBonus;
+
+  // Never go below 50% of base, never exceed base + max bonus
+  return Math.max(baseRadius * MIN_VELOCITY_SCALE,
+                  Math.min(baseRadius + MAX_VELOCITY_BONUS, finalRadius));
+}
+
 /** Fake radius curve for mouse / pointer when real geometry is unusable. */
 // Desktop/pointer functions removed - touch-only app now
 
@@ -210,6 +264,31 @@ export function diffLiveMilestones(active, now) {
 }
 
 /**
+ * Calculate average velocity across all samples
+ */
+function calculateAverageVelocity(samples) {
+  if (samples.length < 2) return 0;
+  let sum = 0;
+  for (let i = 1; i < samples.length; i++) {
+    sum += velocityBetweenSamples(samples[i], samples[i - 1]);
+  }
+  return sum / (samples.length - 1);
+}
+
+/**
+ * Calculate maximum velocity across all samples
+ */
+function calculateMaxVelocity(samples) {
+  if (samples.length < 2) return 0;
+  let max = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const v = velocityBetweenSamples(samples[i], samples[i - 1]);
+    if (v > max) max = v;
+  }
+  return max;
+}
+
+/**
  * Final gesture report for JSON. Appends `release` to `keyframes` (ordered live milestones + release).
  */
 export function buildGestureReport(active, tEnd, keyframes) {
@@ -262,6 +341,11 @@ export function buildGestureReport(active, tEnd, keyframes) {
     msFromPeakToRelease,
     sustainJitter: sustainJitterFromSamples(active.samples, attackEnd),
     dwellNormAtEnd: dwellNormHalfLen(pressDurationMs),
+    velocityMetrics: {
+      avgVelocity: calculateAverageVelocity(active.samples),
+      maxVelocity: calculateMaxVelocity(active.samples),
+      finalVelocityBonus: active.velocityBonus || 0
+    },
     keyframes: allKeyframes,
     path: {
       samples: active.samples,
