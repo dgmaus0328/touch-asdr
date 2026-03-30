@@ -22,6 +22,7 @@ import {
   const radiusDisplayEl = document.getElementById('radiusDisplay');
   const radiusValueEl = document.getElementById('radiusValue');
   const radiusRawValueEl = document.getElementById('radiusRawValue');
+  const forceValueEl = document.getElementById('forceValue');
   const root = document.documentElement;
 
   const CSS_TOUCH_VARS = [
@@ -251,13 +252,15 @@ import {
         active.lockedLineWidth
       );
 
-      // Mode 5: Radius Scale - show numeric radius value (clamped + raw)
+      // Mode 5: Radius Scale - show numeric radius value (clamped + raw + force)
       if (visualizationMode === 5) {
-        if (radiusDisplayEl && radiusValueEl && radiusRawValueEl) {
+        if (radiusDisplayEl && radiusValueEl && radiusRawValueEl && forceValueEl) {
           radiusDisplayEl.style.display = 'block';
           radiusValueEl.textContent = active.currentRadius.toFixed(1);
           const rawAvg = active.rawRadiusAvg !== undefined ? active.rawRadiusAvg.toFixed(2) : '--';
           radiusRawValueEl.textContent = rawAvg;
+          const forceText = active.force !== null ? active.force.toFixed(3) : 'N/A';
+          forceValueEl.textContent = forceText;
         }
         // Draw simple crosshair at current position
         const crosshairX = active.currentX;
@@ -356,6 +359,11 @@ import {
     stopHaptics();
 
     active = createActiveBase(t0, x0, y0, r0, touch.identifier);
+    // Store initial force value
+    active.force = touch.force !== undefined ? touch.force : null;
+    active.rawRadiusX = touch.radiusX || 0;
+    active.rawRadiusY = touch.radiusY || 0;
+    active.rawRadiusAvg = (active.rawRadiusX + active.rawRadiusY) / 2;
     lastHapticTune = 0;
     scheduleFrame();
   }
@@ -378,6 +386,9 @@ import {
     active.rawRadiusX = rx;
     active.rawRadiusY = ry;
     active.rawRadiusAvg = (rx + ry) / 2;
+
+    // Store force value if available (for pressure detection)
+    active.force = touch.force !== undefined ? touch.force : null;
 
     active.samples.push({ t: now, r: r, x: p.x, y: p.y });
     if (r > active.peakR) {
