@@ -254,13 +254,27 @@ import {
 
       // Mode 5: Radius Scale - show numeric radius value (clamped + raw + force)
       if (visualizationMode === 5) {
-        if (radiusDisplayEl && radiusValueEl && radiusRawValueEl && forceValueEl) {
+        if (radiusDisplayEl) {
           radiusDisplayEl.style.display = 'block';
-          radiusValueEl.textContent = active.currentRadius.toFixed(1);
-          const rawAvg = active.rawRadiusAvg !== undefined ? active.rawRadiusAvg.toFixed(2) : '--';
-          radiusRawValueEl.textContent = rawAvg;
-          const forceText = active.force !== null ? active.force.toFixed(3) : 'N/A';
-          forceValueEl.textContent = forceText;
+
+          if (radiusValueEl) {
+            radiusValueEl.textContent = active.currentRadius.toFixed(1);
+          }
+
+          if (radiusRawValueEl) {
+            const rawAvg = active.rawRadiusAvg !== undefined ? active.rawRadiusAvg.toFixed(2) : '--';
+            radiusRawValueEl.textContent = rawAvg;
+          }
+
+          if (forceValueEl) {
+            let forceText;
+            if (active.force === null || active.force === undefined) {
+              forceText = 'N/A';
+            } else {
+              forceText = active.force.toFixed(3);
+            }
+            forceValueEl.textContent = forceText;
+          }
         }
         // Draw simple crosshair at current position
         const crosshairX = active.currentX;
@@ -388,7 +402,14 @@ import {
     active.rawRadiusAvg = (rx + ry) / 2;
 
     // Store force value if available (for pressure detection)
-    active.force = touch.force !== undefined ? touch.force : null;
+    // Check multiple possible properties
+    if (touch.force !== undefined) {
+      active.force = touch.force;
+    } else if (touch.webkitForce !== undefined) {
+      active.force = touch.webkitForce;
+    } else {
+      active.force = null;
+    }
 
     active.samples.push({ t: now, r: r, x: p.x, y: p.y });
     if (r > active.peakR) {
