@@ -240,9 +240,9 @@ import {
   /**
    * Draw finger path with radius variance visualization.
    * @param {Array} samples - Array of {t, r, x, y} objects
-   * @param {number} t0 - Start time for calculating dwell per sample
-   * @param {number} minR - Minimum radius for normalization
-   * @param {number} maxR - Maximum radius for normalization
+   * @param {number} t0 - Start time (unused, kept for compatibility)
+   * @param {number} minR - Min radius (unused in modes 1-3, kept for compatibility)
+   * @param {number} maxR - Max radius (unused in modes 1-3, kept for compatibility)
    * @param {number} alpha - Overall opacity
    * @param {number} mode - Visualization mode (1-4)
    */
@@ -280,9 +280,11 @@ import {
         if (s0.x === undefined || s0.y === undefined) continue;
         if (s1.x === undefined || s1.y === undefined) continue;
 
-        // Map radius to line width (2-10px range)
-        const rNorm = maxR > minR ? (s0.r - minR) / (maxR - minR) : 0.5;
-        const lineWidth = 2 + rNorm * 8;
+        // Use absolute radius scaling (like mode 4 bubbles and crosshair)
+        // Map radius directly to line width with scaling factor
+        // Typical radius range: 15-70px (after velocity modulation)
+        // Map to reasonable line width: ~0.15x of radius
+        const lineWidth = Math.max(1.5, Math.min(15, s0.r * 0.15));
 
         ctx.lineWidth = lineWidth;
         ctx.beginPath();
