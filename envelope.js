@@ -34,6 +34,21 @@ export function touchRadius(touch) {
   return clampContactRadius(r);
 }
 
+/**
+ * Calculate effective radius using base contact area + force (pressure)
+ * iOS provides radiusX/Y (contact area) and force (pressure 0-1)
+ * We scale the radius based on force to show pressure changes
+ */
+export function radiusWithForce(baseRadius, force) {
+  if (force === null || force === undefined || force <= 0) {
+    return baseRadius;
+  }
+  // Map force (0-1) to radius scale (0.5x to 2x)
+  // Typical light touch: ~0.3, normal: ~0.5-0.7, hard press: ~1.0
+  const scale = 0.5 + (force * 1.5); // 0.5 at force=0, 2.0 at force=1
+  return baseRadius * scale;
+}
+
 /** Fake radius curve for mouse / pointer when real geometry is unusable. */
 // Desktop/pointer functions removed - touch-only app now
 

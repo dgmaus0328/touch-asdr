@@ -1,6 +1,7 @@
 import {
   ATTACK_MS,
   touchRadius,
+  radiusWithForce,
   attackVelocityFromSamples,
   sustainJitterFromSamples,
   buildGestureReport,
@@ -368,13 +369,23 @@ import {
     const p0 = canvasPointFromClient(touch.clientX, touch.clientY);
     const x0 = p0.x;
     const y0 = p0.y;
-    const r0 = touchRadius(touch);
+    const baseR0 = touchRadius(touch);
 
     stopHaptics();
 
+    // Store initial force value (check both standard and webkit-prefixed)
+    let initialForce = null;
+    if (touch.force !== undefined) {
+      initialForce = touch.force;
+    } else if (touch.webkitForce !== undefined) {
+      initialForce = touch.webkitForce;
+    }
+
+    // Calculate effective radius with force
+    const r0 = radiusWithForce(baseR0, initialForce);
+
     active = createActiveBase(t0, x0, y0, r0, touch.identifier);
-    // Store initial force value
-    active.force = touch.force !== undefined ? touch.force : null;
+    active.force = initialForce;
     active.rawRadiusX = touch.radiusX || 0;
     active.rawRadiusY = touch.radiusY || 0;
     active.rawRadiusAvg = (active.rawRadiusX + active.rawRadiusY) / 2;
@@ -391,7 +402,7 @@ import {
     if (!touch) return;
 
     const now = performance.now();
-    const r = touchRadius(touch);
+    const baseR = touchRadius(touch);
     const p = canvasPointFromClient(touch.clientX, touch.clientY);
 
     // Store raw radius values for debugging in Mode 5
@@ -402,14 +413,25 @@ import {
     active.rawRadiusAvg = (rx + ry) / 2;
 
     // Store force value if available (for pressure detection)
-    // Check multiple possible properties
+    // iOS zeroes force during movement, so keep last non-zero value
+    let currentForce = null;
     if (touch.force !== undefined) {
-      active.force = touch.force;
+      currentForce = touch.force;
     } else if (touch.webkitForce !== undefined) {
-      active.force = touch.webkitForce;
-    } else {
-      active.force = null;
+      currentForce = touch.webkitForce;
     }
+
+    // Only update if we got a non-zero force, otherwise keep previous value
+    if (currentForce !== null && currentForce > 0) {
+      active.force = currentForce;
+    } else if (active.force === null || active.force === undefined) {
+      // First time and got zero/null, store it anyway
+      active.force = currentForce;
+    }
+    // else: keep previous non-zero force value during movement
+
+    // Calculate effective radius using base contact area + force (pressure)
+    const r = radiusWithForce(baseR, active.force);
 
     active.samples.push({ t: now, r: r, x: p.x, y: p.y });
     if (r > active.peakR) {
