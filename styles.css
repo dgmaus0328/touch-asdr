@@ -124,3 +124,37 @@ body {
   transform: scale(0.95);
   background: rgba(255, 255, 255, 1);
 }
+
+.radius-display {
+  position: absolute;
+  bottom: 6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.75rem 1.5rem;
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid #4a4a52;
+  border-radius: 8px;
+  font: 600 1.5rem system-ui, monospace;
+  color: #1a1a1e;
+  pointer-events: none;
+  z-index: 3;
+  white-space: nowrap;
+}
+
+.radius-label {
+  color: #6a6a72;
+  font-weight: 400;
+  margin-right: 0.5rem;
+}
+
+.radius-value {
+  color: #1a1a1e;
+  font-weight: 700;
+  font-size: 1.75rem;
+}
+
+.radius-unit {
+  color: #6a6a72;
+  font-weight: 400;
+  margin-left: 0.25rem;
+}

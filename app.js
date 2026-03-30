@@ -19,6 +19,8 @@ import {
   const ctx = canvas.getContext('2d');
   const hintEl = document.getElementById('hint');
   const modeLabelEl = document.getElementById('modeLabel');
+  const radiusDisplayEl = document.getElementById('radiusDisplay');
+  const radiusValueEl = document.getElementById('radiusValue');
   const root = document.documentElement;
 
   const CSS_TOUCH_VARS = [
@@ -107,7 +109,7 @@ import {
   let rafId = null;
   let hapticTimer = null;
   let lastHapticTune = 0;
-  let visualizationMode = 1; // 1: Path+Crosshair, 2: Path only, 3: Path+Fixed, 4: Bubbles
+  let visualizationMode = 1; // 1: Path+Crosshair, 2: Path only, 3: Path+Fixed, 4: Bubbles, 5: Radius Scale
   const MAX_GHOSTS = 15;
   const MAX_PATH_SEGMENTS = 100;
 
@@ -248,22 +250,44 @@ import {
         active.lockedLineWidth
       );
 
-      // Draw path first (behind crosshair)
-      if (visualizationMode >= 1 && visualizationMode <= 4) {
-        drawFingerPath(active.samples, active.t0, active.r0, active.peakR, 0.6, visualizationMode);
-      }
-
-      // Show crosshair only when stationary (or always in Mode 3)
-      const showCrosshair = visualizationMode === 3 ||
-                            (visualizationMode !== 2 && active.movementState === 'stationary');
-
-      if (showCrosshair) {
-        const crosshairX = (visualizationMode === 1) ? active.currentX : active.x0;
-        const crosshairY = (visualizationMode === 1) ? active.currentY : active.y0;
+      // Mode 5: Radius Scale - show numeric radius value
+      if (visualizationMode === 5) {
+        if (radiusDisplayEl && radiusValueEl) {
+          radiusDisplayEl.style.display = 'block';
+          radiusValueEl.textContent = active.currentRadius.toFixed(1);
+        }
+        // Draw simple crosshair at current position
+        const crosshairX = active.currentX;
+        const crosshairY = active.currentY;
         drawCrosshair(crosshairX, crosshairY, halfLen, lw, 1);
+      } else {
+        // Hide radius display in other modes
+        if (radiusDisplayEl) {
+          radiusDisplayEl.style.display = 'none';
+        }
+
+        // Draw path first (behind crosshair) for modes 1-4
+        if (visualizationMode >= 1 && visualizationMode <= 4) {
+          drawFingerPath(active.samples, active.t0, active.r0, active.peakR, 0.6, visualizationMode);
+        }
+
+        // Show crosshair only when stationary (or always in Mode 3)
+        const showCrosshair = visualizationMode === 3 ||
+                              (visualizationMode !== 2 && active.movementState === 'stationary');
+
+        if (showCrosshair) {
+          const crosshairX = (visualizationMode === 1) ? active.currentX : active.x0;
+          const crosshairY = (visualizationMode === 1) ? active.currentY : active.y0;
+          drawCrosshair(crosshairX, crosshairY, halfLen, lw, 1);
+        }
       }
 
       scheduleFrame();
+    } else {
+      // No active gesture - hide radius display
+      if (radiusDisplayEl) {
+        radiusDisplayEl.style.display = 'none';
+      }
     }
   }
 
@@ -462,13 +486,13 @@ import {
 
   // Mode toggle button
   const modeToggleBtn = document.getElementById('modeToggle');
-  const modeNames = ['', 'Path + Crosshair', 'Path Only', 'Path + Fixed', 'Bubble Trail'];
+  const modeNames = ['', 'Path + Crosshair', 'Path Only', 'Path + Fixed', 'Bubble Trail', 'Radius Scale'];
 
   if (modeToggleBtn) {
     modeToggleBtn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
-      visualizationMode = (visualizationMode % 4) + 1;
+      visualizationMode = (visualizationMode % 5) + 1;
       modeToggleBtn.textContent = String(visualizationMode);
       if (modeLabelEl) {
         modeLabelEl.textContent = '— ' + modeNames[visualizationMode];
