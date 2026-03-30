@@ -198,7 +198,7 @@ import {
   let thermalCooldownTimer = null; // For Mode 6 fade-out
   let currentThermalColor = null; // Track current thermal background (parsed as {r, g, b})
   let targetThermalColor = null; // Target color to interpolate toward
-  const THERMAL_INTERPOLATION_SPEED = 0.15; // How fast colors transition (0-1, higher = faster)
+  const THERMAL_INTERPOLATION_SPEED = 0.05; // How fast colors transition (0-1, higher = faster)
   const MAX_GHOSTS = 15;
   const MAX_PATH_SEGMENTS = 100;
 
