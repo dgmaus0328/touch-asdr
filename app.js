@@ -353,7 +353,6 @@ import {
       lockedLineWidth: null,
       attackDone: false,
       movementState: 'stationary',
-      previousMovementState: 'stationary',
       recentSamples: [{ x: x0, y: y0, t: t0 }],
       keyframes: [],
       _milestoneAttackEndEmitted: false,
@@ -422,30 +421,9 @@ import {
     active.rawRadiusY = ry;
     active.rawRadiusAvg = (rx + ry) / 2;
 
-    // Store force value if available (for pressure detection)
-    // iOS zeroes force during movement, so keep last non-zero value
-    let rawForce = null;
-    let normalizedForce = null;
-    if (touch.force !== undefined && touch.force > 0) {
-      rawForce = touch.force;
-      normalizedForce = normalizeForce(touch.force, false);
-    } else if (touch.webkitForce !== undefined && touch.webkitForce > 0) {
-      rawForce = touch.webkitForce;
-      normalizedForce = normalizeForce(touch.webkitForce, true);
-    }
-
-    // Only update if we got a non-zero force, otherwise keep previous value
-    if (normalizedForce !== null && normalizedForce > 0) {
-      active.force = normalizedForce;
-      active.rawForce = rawForce;
-    } else if (active.force === null || active.force === undefined) {
-      // First time and got zero/null, store it anyway
-      active.force = normalizedForce;
-      active.rawForce = rawForce;
-    }
-    // else: keep previous non-zero force value during movement
-
-    // Calculate effective radius using base contact area + normalized force
+    // iOS Safari limitation: webkitForce returns 0 during all touchmove events
+    // radiusX/Y are also frozen at initial contact area
+    // Keep using initial force value throughout the gesture
     const r = radiusWithForce(baseR, active.force);
 
     active.samples.push({ t: now, r: r, x: p.x, y: p.y });
@@ -465,36 +443,6 @@ import {
 
     // Update movement state based on velocity
     updateMovementState(active);
-
-    // Try to re-sample force when transitioning to stationary
-    if (active.previousMovementState === 'moving' && active.movementState === 'stationary') {
-      // Finger just slowed/stopped - try to get updated force
-      let stationaryRawForce = null;
-      let stationaryNormalizedForce = null;
-      if (touch.force !== undefined && touch.force > 0) {
-        stationaryRawForce = touch.force;
-        stationaryNormalizedForce = normalizeForce(touch.force, false);
-      } else if (touch.webkitForce !== undefined && touch.webkitForce > 0) {
-        stationaryRawForce = touch.webkitForce;
-        stationaryNormalizedForce = normalizeForce(touch.webkitForce, true);
-      }
-
-      if (stationaryNormalizedForce !== null && stationaryNormalizedForce > 0) {
-        // Got a new force value! Update it
-        active.force = stationaryNormalizedForce;
-        active.rawForce = stationaryRawForce;
-        // Recalculate radius with new normalized force
-        const newR = radiusWithForce(baseR, active.force);
-        active.currentRadius = newR;
-        // Update the most recent sample with new radius
-        if (active.samples.length > 0) {
-          active.samples[active.samples.length - 1].r = newR;
-        }
-      }
-    }
-
-    // Store state for next comparison
-    active.previousMovementState = active.movementState;
 
     const attackEnd = active.t0 + ATTACK_MS;
     active.attackVelocity = attackVelocityFromSamples(active.samples, active.t0, active.r0, attackEnd);

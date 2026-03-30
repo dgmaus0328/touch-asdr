@@ -1,6 +1,15 @@
 /**
  * Touch "envelope" math: contact radius, attack velocity, sustain jitter, dwell.
  * DOM-free — reuse in other projects with your own event wiring and canvas.
+ *
+ * iOS Safari Limitation: Real-time pressure tracking during touch movement is NOT possible.
+ * - webkitForce returns 0.0 during all touchmove events (only available at touchstart)
+ * - radiusX/Y are frozen at initial contact area throughout the gesture
+ * - Pressure can only be captured once per touch at initial contact
+ * - Different touches can have different pressures, but pressure cannot change during a touch
+ *
+ * Tested workarounds (all failed): stationary re-sampling, Pointer Events API, alternative Touch properties
+ * For true pressure-sensitive drawing, use native iOS APIs (UITouch.force) or Apple Pencil with PencilKit.
  */
 
 export const ATTACK_MS = 150;

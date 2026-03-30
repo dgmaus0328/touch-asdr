@@ -60,6 +60,34 @@ App output lives under the Pages repo’s `public/touch-asdr/` (same idea as `pu
 
 **Hardware note:** After lift, contact radius is usually **not** sampled, so “time to return to zero” radius is **not** measured; **`msFromPeakToRelease`** is the time from first reaching the final peak radius until release.
 
+## iOS Safari Limitations
+
+### Real-Time Pressure Tracking is Not Possible
+
+**iOS Safari does not support continuous pressure detection during a touch gesture.** This is a platform limitation, not an implementation issue.
+
+**What works:**
+- ✅ Different initial pressures between separate touches (hard press vs light touch at touchstart)
+- ✅ Initial `webkitForce` value captured at touchstart
+- ✅ `radiusX/Y` contact area at initial touch
+
+**What doesn't work:**
+- ❌ Detecting pressure changes **during** a single touch gesture
+- ❌ `webkitForce` returns **0.0 during all touchmove events** (even when stationary)
+- ❌ `radiusX/Y` are **frozen at initial contact area** throughout the gesture
+
+**Why:**
+iOS designed `touch.force` for **3D Touch** press-and-hold gestures, not for continuous pressure tracking during swipes/drags. Safari does not expose real-time pressure data during movement for security and performance reasons.
+
+**Tested workarounds that failed:**
+- ❌ Re-sampling force when finger becomes stationary (still returns 0.0)
+- ❌ Using Pointer Events API (same limitation)
+- ❌ Alternative Touch properties (altitudeAngle, etc. are stylus-only)
+
+**Data proven via JSON logging:** Test gestures show all samples have identical radius values with `attackVelocity: 0` and `sustainJitter: 0`, confirming zero variation during movement.
+
+**Implication:** This app captures initial touch pressure and applies it throughout the gesture. For true pressure-sensitive drawing (like Apple Pencil), a **native iOS app** or **different API** would be required.
+
 ### Tunables (`envelope.js`)
 
 | Constant | Role |
